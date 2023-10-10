@@ -1,0 +1,28 @@
+config_product.yaml
+# VSCode
+.vscode
+
+# Temporary files
+*~
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.log
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Trashes
+__MACOSX/
+
+# Thumbnails
+._*
+Thumbs.db
+
+# Files that might appear on external disk
+.Spotlight-V100
+.Trashes
