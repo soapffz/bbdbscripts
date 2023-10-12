@@ -1,0 +1,5 @@
+DEFAULT:
+  BBDB_ARL_URL: https://localhost:5003/
+  BBDB_ARL_USERNAME: admin
+  BBDB_ARL_PASSWORD: arlpass
+  BBDB_MONGODB_URI:  mongodb://localhost:27017

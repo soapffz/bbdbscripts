@@ -477,11 +477,15 @@ print("Database 'bbdb' deleted.")
 
 ## NaN.2 相关脚本运行截图展示
 
+![bbdb_arl.py](https://img.soapffz.com/soapsgithubimgs/bbdb_arl演示截图-2023年10月12日.png)
+
 ## NaN.3 参考的项目列表
 
 - <https://github.com/Young873/Firefly-SRC>
 
 ## NaN.4 更新日志
+2023 年 10 月 12 日
+- [update]: 修复bbdb_arl.py脚本的bug,贴上运行成功的截图
 
 2023 年 10 月 10日
 

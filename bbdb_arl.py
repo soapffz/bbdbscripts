@@ -47,51 +47,48 @@ def check_env_vars(config):
     # 检查每个环境变量
     for var in required_env_vars:
         if not config["DEFAULT"].get(var):
-            logging.info(f"环境变量 {var} 无效。请检查你的环境变量设置。")
+            print(f"环境变量 {var} 无效。请检查你的环境变量设置。")
             return False
 
     # 如果所有环境变量都有效，返回 True
     return True
 
 
-def send_request(url, method, headers, data=None):
-    try:
-        if method == "GET":
-            response = requests.get(url, headers=headers, verify=False)
-        elif method == "POST":
-            response = requests.post(
-                url, headers=headers, data=json.dumps(data), verify=False
-            )
-        else:
-            logging.info("Invalid method")
-            return None
-
-        if response.status_code == 200:
-            return response.json()
-        else:
-            logging.info(f"Request failed with status code {response.status_code}")
-            return None
-    except Exception as e:
-        logging.info(e, "出错了，请排查")
-        return None
-
-
 # 登录ARL
 def login_arl(arl_url, username, password):
-    if not arl_url:
-        logging.info("ARL URL 无效。请检查你的配置文件。")
-        sys.exit()
+    if not all([arl_url, username, password]):
+        logging.error("ARL URL, username or password is missing.")
+        return None
 
     data = {"username": username, "password": password}
     headers = {"Content-Type": "application/json; charset=UTF-8"}
-    response = send_request(arl_url + "/api/user/login", "POST", headers, data)
 
-    if response and response["code"] == 200:
-        logging.info("ARL登录成功")
-        return response["data"]["token"]
-    else:
-        logging.info("ARL登录失败")
+    try:
+        response = requests.post(
+            arl_url + "/api/user/login", headers=headers, json=data, verify=False
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        logging.error(f"Request failed: {e}")
         return None
+
+    try:
+        response_data = response.json()
+    except ValueError:
+        logging.error("Failed to decode JSON response.")
+        return None
+
+    if response_data.get("code") != 200:
+        logging.error(f"ARL login failed, error code: {response_data.get('code')}")
+        return None
+
+    token = response_data.get("data", {}).get("token")
+    if not token:
+        logging.error("Token is missing in the response.")
+        return None
+
+    print("ARL login successful.")
+    return token
 
 
 def get_bbdb_data(db):
@@ -134,7 +131,7 @@ def insert_new_group_to_arl(
     for business_name in business_only_asset_scopes:
         # 检查资产分组是否已经存在
         if business_name in arl_asset_scope_names:
-            # logging.info(f"资产分组 {business_name} 已经存在，跳过插入")
+            # print(f"资产分组 {business_name} 已经存在，跳过插入")
             continue
         # 获取对应的 business_id
         business_id = next(
@@ -146,7 +143,7 @@ def insert_new_group_to_arl(
             None,
         )
         if not business_id:
-            logging.info(f"无法找到业务 {business_name} 的 ID")
+            print(f"无法找到业务 {business_name} 的 ID")
             continue
 
         # 获取对应的根域名和子域名
@@ -177,7 +174,7 @@ def add_asset_scope(token, arl_url, name, scope):
 
     # 检查资产分组是否已经存在
     if name in arl_asset_scope_names:
-        # logging.info(f"资产分组 {name} 已经存在，跳过添加")
+        # print(f"资产分组 {name} 已经存在，跳过添加")
         return
 
     # 准备请求数据
@@ -185,16 +182,29 @@ def add_asset_scope(token, arl_url, name, scope):
     headers = {"Token": token, "Content-Type": "application/json; charset=UTF-8"}
 
     # 发送请求
-    response = send_request(arl_url + "/api/asset_scope/", "POST", headers, data)
+    try:
+        response = requests.post(
+            arl_url + "/api/asset_scope/", headers=headers, json=data, verify=False
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(e, "出错了，请排查")
+        return None
 
     # 解析响应内容
-    if response:
-        scope_id = response.get("data", {}).get("scope_id")
+    try:
+        response_data = response.json()
+    except ValueError:
+        print("无法解析" + name + "响应内容")
+        return None
+
+    if response_data:
+        scope_id = response_data.get("data", {}).get("scope_id")
         if not scope_id:
-            logging.info("{name} 返回scope_id为空")
+            print("{name} 返回scope_id为空")
             exit(-1)
     else:
-        logging.info("无法解析" + name + "响应内容")
+        print("无法解析" + name + "响应内容")
 
 
 def fetch_arl_asset_scope_names(token, arl_url):
@@ -203,25 +213,39 @@ def fetch_arl_asset_scope_names(token, arl_url):
 
 
 def retrieve_all_arl_asset_scopes(token, arl_url):
-    # 获取ARL的资产分组
     headers = {"Token": token, "Content-Type": "application/json; charset=UTF-8"}
-    page = 1
     size = 10
     all_asset_scopes = []
-    while True:
-        response = send_request(
-            arl_url + f"/api/asset_scope/?size={size}&page={page}", "GET", headers
-        )
+    page = 1
+    total_pages = None  # 初始化总页数为 None
 
-        if response:
-            if "items" in response:
-                all_asset_scopes.extend(response["items"])
-            else:
-                logging.info("响应中没有 'items' 键")
-                break
-        else:
-            logging.info("请求失败")
+    while total_pages is None or page <= total_pages:
+        try:
+            response = requests.get(
+                arl_url + f"/api/asset_scope/?size={size}&page={page}",
+                headers=headers,
+                verify=False,
+            )
+            response.raise_for_status()
+            response_data = response.json()
+        except requests.RequestException as e:
+            logging.error(f"Request failed: {e}")
             break
+        except ValueError:
+            logging.error("Failed to decode JSON response.")
+            break
+
+        if total_pages is None:
+            total = response_data.get("total", 0)
+            total_pages = (total + size - 1) // size  # 计算总页数
+
+        if "items" in response_data:
+            all_asset_scopes.extend(response_data["items"])
+        else:
+            print("响应中没有 'items' 键")
+            break
+
+        page += 1  # 请求下一页
 
     return all_asset_scopes
 
@@ -238,7 +262,7 @@ def insert_new_group_to_bbdb(db, arl_only_asset_scopes, arl_all_asset_scopes):
             None,
         )
         if asset_scope is None:
-            logging.info(f"无法找到资产分组 {arl_name}")
+            print(f"无法找到资产分组 {arl_name}")
             continue
 
         # 检查 business 是否已存在
@@ -347,13 +371,13 @@ def add_policy(arl_url, token, policy_name, scope_id):
     arl_all_policies = get_arl_all_policies(arl_url, token)
     # 检查策略是否已经存在
     if any(policy["name"] == policy_name for policy in arl_all_policies):
-        logging.info(f"策略 {policy_name} 已经存在，跳过添加")
+        print(f"策略 {policy_name} 已经存在，跳过添加")
         return
 
     # 准备请求参数
     payload = {
         "name": policy_name,
-        "desc": "",
+        "desc": "set by soapffz",
         "policy": {
             "domain_config": {
                 "domain_brute": True,
@@ -365,9 +389,9 @@ def add_policy(arl_url, token, policy_name, scope_id):
             },
             "ip_config": {
                 "port_scan": True,
-                "service_detection": True,
-                "os_detection": True,
-                "ssl_cert": True,
+                "service_detection": False,
+                "os_detection": False,
+                "ssl_cert": False,
                 "port_scan_type": "all",
                 "port_custom": "",
                 "host_timeout_type": "default",
@@ -375,13 +399,13 @@ def add_policy(arl_url, token, policy_name, scope_id):
                 "port_parallelism": 32,
                 "port_min_rate": 60,
             },
-            "npoc_service_detection": True,
+            "npoc_service_detection": False,
             "site_config": {
-                "site_identify": True,
-                "search_engines": True,
-                "site_spider": True,
-                "site_capture": True,
-                "nuclei_scan": True,
+                "site_identify": False,
+                "search_engines": False,
+                "site_spider": False,
+                "site_capture": False,
+                "nuclei_scan": False,
             },
             "file_leak": True,
             "poc_config": [
@@ -691,58 +715,63 @@ def add_policy(arl_url, token, policy_name, scope_id):
     headers = {"Token": token, "Content-Type": "application/json; charset=UTF-8"}
 
     # 发送请求
-    response = send_request(arl_url + "/api/policy/add/", "POST", headers, payload)
-    # 检查响应是否有效
-    # 检查响应是否有效
-    if (
-        response is None
-        or not isinstance(response, dict)
-        or "status_code" not in response
-    ):
-        # logging.info(f"添加策略 {policy_name} 失败，跳过")
-        return
+    try:
+        response = requests.post(
+            arl_url + "/api/policy/add/", headers=headers, json=payload, verify=False
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(e, "出错了，请排查")
+        return None
 
-    # 如果响应状态码不是200，也跳过
-    if response.status_code != 200:
-        # logging.info(f"添加策略 {policy_name} 失败，状态码：{response.status_code}，跳过")
-        return
-    else:
-        try:
-            result = response.content.decode()
-            policy_result = json.loads(result)
-            policy_id = policy_result.get("data", {}).get("policy_id")
-        except json.JSONDecodeError:
-            logging.info(f"无法解析ADD {policy_name} 策略的响应内容")
-            return
+    # 检查响应是否有效
+    try:
+        response_data = response.json()
+    except ValueError:
+        print(f"无法解析ADD {policy_name} 策略的响应内容")
+        return None
 
-        # 返回策略ID
-        return policy_id
+    policy_id = response_data.get("data", {}).get("policy_id")
+    # 返回策略ID
+    return policy_id
 
 
 def get_arl_all_policies(arl_url, token):
+    headers = {"Token": token, "Content-Type": "application/json; charset=UTF-8"}
+    size = 10
+    all_policies = []
     page = 1
-    size = 100  # 增大每页获取的策略数量
-    arl_all_policies = []
-    while True:
-        headers = {"Token": token, "Content-Type": "application/json; charset=UTF-8"}
-        response = send_request(
-            arl_url + f"/api/policy/?size={size}&page={page}", "GET", headers
-        )
+    total_pages = None  # 初始化总页数为 None
 
-        if response:
-            arl_all_policies.extend(response["items"])
-
-            # 如果当前页的策略数量小于 size，那么我们已经获取了所有策略
-            if len(response["items"]) < size:
-                break
-
-            # 否则，我们需要获取下一页的策略
-            page += 1
-        else:
-            logging.info(f"请求失败")
+    while total_pages is None or page <= total_pages:
+        try:
+            response = requests.get(
+                arl_url + f"/api/policy/?size={size}&page={page}",
+                headers=headers,
+                verify=False,
+            )
+            response.raise_for_status()
+            response_data = response.json()
+        except requests.RequestException as e:
+            print(e, "出错了，请排查")
+            break
+        except ValueError:
+            print("无法解析响应内容")
             break
 
-    return arl_all_policies
+        if total_pages is None:
+            total = response_data.get("total", 0)
+            total_pages = (total + size - 1) // size  # 计算总页数
+
+        if "items" in response_data:
+            all_policies.extend(response_data["items"])
+        else:
+            print("响应中没有 'items' 键")
+            break
+
+        page += 1  # 请求下一页
+
+    return all_policies
 
 
 def get_unconfigured_asset_group_ids(arl_url, token, arl_scope_ids):
@@ -764,32 +793,39 @@ def get_unconfigured_asset_group_ids(arl_url, token, arl_scope_ids):
 
 
 def add_scheduler(token, arl_url, scope_id, domain, policy_id):
-    # 检查监控任务是否已经存在
-    if check_scheduler_exists(token, arl_url, domain):
-        # logging.info(f"Scheduler for domain {domain} already exists, skipping")
-        return
-
     # 准备请求数据
     data = {
         "scope_id": scope_id,
         "domain": domain,
-        "interval": 21600,
+        "interval": 86400,
         "policy_id": policy_id,
         "name": "",
     }
     headers = {"Token": token, "Content-Type": "application/json; charset=UTF-8"}
 
     # 发送请求
-    response = send_request(arl_url + "/api/scheduler/add/", "POST", headers, data)
+    try:
+        response = requests.post(
+            arl_url + "/api/scheduler/add/", headers=headers, json=data, verify=False
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        return
 
 
 def check_scheduler_exists(token, arl_url, domain):
     headers = {"Token": token, "Content-Type": "application/json; charset=UTF-8"}
-    response = send_request(
-        arl_url + f"/api/scheduler/?domain={domain}", "GET", headers
-    )
+    try:
+        response = requests.get(
+            arl_url + f"/api/scheduler/?domain={domain}", headers=headers, verify=False
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(e, "出错了，请排查")
+        return False
 
-    if response and response.get("total", 0) > 0:
+    response_data = response.json()
+    if response_data and response_data.get("total", 0) > 0:
         return True
     else:
         return False
@@ -799,14 +835,21 @@ def add_site_monitor(token, arl_url, scope_id):
     # 准备请求数据
     data = {
         "scope_id": scope_id,
-        "interval": 21600,
+        "interval": 86400,
     }
     headers = {"Token": token, "Content-Type": "application/json; charset=UTF-8"}
 
     # 发送请求
-    response = send_request(
-        arl_url + "/api/scheduler/add/site_monitor/", "POST", headers, data
-    )
+    try:
+        response = requests.post(
+            arl_url + "/api/scheduler/add/site_monitor/",
+            headers=headers,
+            json=data,
+            verify=False,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(e, "出错了，请排查")
 
 
 def sync_domain_assets(
@@ -858,15 +901,22 @@ def sync_domain_assets(
                 "Token": token,
                 "Content-Type": "application/json; charset=UTF-8",
             }
-            response = send_request(
-                arl_url + "/api/asset_scope/add/", "POST", headers, data
-            )
+            try:
+                response = requests.post(
+                    arl_url + "/api/asset_scope/add/",
+                    headers=headers,
+                    json=data,
+                    verify=False,
+                )
+                response.raise_for_status()
+            except requests.RequestException as e:
+                print(e, "出错了，请排查")
             if response.status_code == 200:
-                logging.info(
+                print(
                     f"Added {len(new_domains_to_arl)} domains to ARL asset scope {scope_id}"
                 )
             else:
-                logging.info(f"Failed to add domains to ARL asset scope {scope_id}")
+                print(f"Failed to add domains to ARL asset scope {scope_id}")
 
             # 找到对应的策略
             policy = next(
@@ -946,14 +996,12 @@ def sync_ip_assets(db, arl_all_asset_scopes, businesses):
                     for ip in new_ips_to_bbdb
                 ]
             )
-            logging.info(
-                f"Added {len(new_ips_to_bbdb)} IPs to bbdb business {business_id}"
-            )
+            print(f"Added {len(new_ips_to_bbdb)} IPs to bbdb business {business_id}")
 
 
 def main():
     # 读取配置文件
-    with open("config_product.yaml", "r") as f:
+    with open("config_debug.yaml", "r") as f:
         config = yaml.safe_load(f)
 
     # 检查环境变量
@@ -977,9 +1025,9 @@ def main():
 
     # 1. 从bbdb全量读取"国内-"开头的business，root_domain,sub_domain数据，并登录ARL获取token。
     token = login_arl(arl_url, username, password)
-    logging.info("1-bbdb读取中..")
+    print("1-bbdb读取中..")
     businesses, root_domains, sub_domains = get_bbdb_data(db)
-    logging.info("1-读取bbdb完成")
+    print("1-读取bbdb完成，准备获取arl资产分组")
 
     # 2. 获取ARL中资产分组的名称，并与business中的name进行比较，确定需要互相插入的资产分组。
     arl_all_asset_scopes = retrieve_all_arl_asset_scopes(token, arl_url)
@@ -987,7 +1035,7 @@ def main():
         businesses, arl_all_asset_scopes
     )
     arl_scope_ids = [asset_scope["_id"] for asset_scope in arl_all_asset_scopes]
-    logging.info("2-arl和bbdb分组信息确认完成，准备arl插入")
+    print("2-arl和bbdb分组信息确认完成，准备arl插入")
 
     # 3. 首先进行bbdb向ARL进行新分组的插入，插入根域名和子域名（合并去重，保持原有顺序，根域名在先），scope_type为domain。
     insert_new_group_to_arl(
@@ -998,15 +1046,15 @@ def main():
         root_domains,
         sub_domains,
     )
-    logging.info("3-arl分组插入完成")
+    print("3-arl分组插入完成")
 
     # 重新获取ARL中资产分组的scope_id
     arl_all_asset_scopes = retrieve_all_arl_asset_scopes(token, arl_url)
-    logging.info("3-刷新arl分组资产..")
+    print("3-刷新arl分组资产..")
 
     # 4. 完成后，再进行ARL向bbdb的插入。对于每一个只在 ARL 资产分组中的 name，添加到 bbdb 中
     insert_new_group_to_bbdb(db, arl_only_asset_scopes, arl_all_asset_scopes)
-    logging.info("4-bbdb分组插入完成，等待检测分组扫描策略是否完整..")
+    print("4-bbdb分组插入完成，等待检测分组扫描策略是否完整..")
 
     # 5.扫描策略配置。为ARL中没有对应扫描策略的资产分组，添加与其资产分组名称相同的扫描策略.
     arl_all_policies = get_arl_all_policies(arl_url, token)
@@ -1027,17 +1075,15 @@ def main():
             try:
                 add_policy(arl_url, token, asset_group_name, scope_id)
             except Exception as e:
-                logging.info(
-                    f"Failed to add policy for asset group {asset_group_name}: {e}"
-                )
+                print(f"Failed to add policy for asset group {asset_group_name}: {e}")
         else:
-            logging.info(f"Asset group with scope_id {scope_id} not found")
-    logging.info("5-策略检测完成")
+            print(f"Asset group with scope_id {scope_id} not found")
+    print("5-策略检测完成")
 
     # 重新获取bbdb的root_domains和sub_domains
-    logging.info("5-等待刷新bbdb..")
+    print("5-等待刷新bbdb..")
     businesses, root_domains, sub_domains = get_bbdb_data(db)
-    logging.info("5-刷新bbdb完成，开始双向域名资产同步..")
+    print("5-刷新bbdb完成，开始双向域名资产同步..")
 
     # 6. 域名资产同步。对双向相同的分组中的域名资产进行双向同步，bbdb侧从内存中读取比较后，提取绝对根域名并对比root_domain表，子域名对比sub_domain表，ARL侧则将新增子域名直接插入资产分组的资产范围中后，将新增的域名也启动监控任务。
     sync_domain_assets(
@@ -1050,18 +1096,22 @@ def main():
         arl_all_asset_scopes,
         arl_all_policies,
     )
-    logging.info("6-域名资产双向同步完成")
+    print("6-域名资产双向同步完成")
 
     # 重新获取bbdb的root_domains和sub_domains
-    logging.info("6-等待刷新bbdb..")
+    print("6-等待刷新bbdb..")
     businesses, root_domains, sub_domains = get_bbdb_data(db)
-    logging.info("6-刷新bbdb完成")
+    print("6-刷新bbdb完成")
 
     # 7. IP资产同步。对双向相同的分组中的IP资产进行双向同步，bbdb侧从内存中读取比较后，提取IP并对比ip表，ARL侧则将新增IP直接插入资产分组的资产范围中后，将新增的IP也启动监控任务。
     sync_ip_assets(db, arl_all_asset_scopes, businesses)
-    logging.info("7-ip资产导入bbdb完成,开始添加arl监控任务..")
+    print("7-ip资产导入bbdb完成,开始添加arl监控任务..")
 
     # 8.监控任务触发。配置好资产分组和对应的策略后，批量为新增的策略和资产分组触发监控和站点监控任务。
+    print("8-刷新arl资产，准备批量添加监控任务.")
+    # 重新获取策略列表
+    arl_all_policies = get_arl_all_policies(arl_url, token)
+    arl_all_asset_scopes = retrieve_all_arl_asset_scopes(token, arl_url)
     for asset_scope in arl_all_asset_scopes:
         scope_id = asset_scope["_id"]
         domain = ",".join(asset_scope["scope_array"])
@@ -1079,8 +1129,8 @@ def main():
             add_scheduler(token, arl_url, scope_id, domain, policy_id)
             add_site_monitor(token, arl_url, scope_id)  # 添加站点更新监控周期任务
         else:
-            logging.info(f"No policy found for scope_id {scope_id}")
-    logging.info("8-arl监控任务添加完毕,统计数据，脚本结束。")
+            print(f"No policy found for scope_id {scope_id}")
+    print("8-arl监控任务添加完毕,统计数据，脚本结束。")
 
     # 9. 在每次脚本运行结束后，统计双方互相同步的新资产分组数量，新同步的子域名数量、IP数量。
     new_asset_scopes_count = len(business_only_asset_scopes) + len(
@@ -1089,9 +1139,9 @@ def main():
     new_domains_count = len(new_domains_to_arl) + len(new_domains_to_bbdb)
     new_ips_count = len(new_ips_to_bbdb)
 
-    logging.info(f"New asset groups synced: {new_asset_scopes_count}")
-    logging.info(f"New domains synced: {new_domains_count}")
-    logging.info(f"New IPs synced: {new_ips_count}")
+    print(f"New asset groups synced: {new_asset_scopes_count}")
+    print(f"New domains synced: {new_domains_count}")
+    print(f"New IPs synced: {new_ips_count}")
 
 
 if __name__ == "__main__":
