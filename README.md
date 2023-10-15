@@ -26,7 +26,7 @@ _个人自用_
 ql repo https://github.com/soapffz/bbdbscripts.git "bbdb_*.py" "README.md"
 ```
 
-- 拉取所有以"bbdb_"开头，后缀为".py"的文件，同时排除"README.md"文件
+- 拉取所有以"bbdb\_"开头，后缀为".py"的文件，同时排除"README.md"文件
 
 #### 青龙变量清单
 
@@ -169,6 +169,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 - id：业务 ID，MongoDB 自动生成
 - name：业务名称，如项目名称/SRC 名称/公司名称/组织名称
 - url：业务对应的链接
+- company: 对应的公司名称，字符串列表
 - notes：备注，用于自定义描述
 - create_time：创建时间
 - update_time：修改时间
@@ -178,6 +179,8 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 - _id：根域名 ID，MongoDB 自动生成
 - name：根域名名称
 - icpregnum：icp 备案号名称
+- company: 主办单位名称
+- company_type: 单位性质
 - business_id：关联的业务 ID
 - notes：备注，用于自定义描述
 - create_time：创建时间
@@ -188,6 +191,8 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 - _id：子域名 ID，MongoDB 自动生成
 - name：子域名名称
 - icpregnum：icp 备案号名称
+- company: 主办单位名称
+- company_type: 单位性质
 - root_domain_id：关联的根域名 ID
 - business_id：关联的业务 ID
 - notes：备注，用于自定义描述
@@ -200,6 +205,12 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 - url：站点 URL
 - status：状态码
 - title：网站标题
+- keywords: 网站关键词，字符串列表
+- applications: 应用名称，字符串列表
+- applications_categories: 应用类别，字符串列表
+- applications_types: 应用类型，字符串列表
+- applications_levels: 应用层级，字符串列表
+- application_manufacturer: 应用生产厂商，字符串列表
 - fingerprint：网站指纹
 - root_domain_id：关联的根域名 ID
 - sub_domain_id：关联的子域名 ID
@@ -216,6 +227,15 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 - service_name：服务名称，如 Threema
 - service_type：服务类型，如 http、ssl、default/xmpp-client 等
 - service_desc：服务描述，如 nginx
+- province_cn: 省份中文名称
+- city_cn: 城市中文名称
+- country_cn: 国家中文名称
+- districts_and_counties_en: 区县英文名称
+- districts_and_counties_cn: 区县中文名称
+- province_en: 城市英文名称
+- city_en: 城市英文名称
+- country_en: 国家英文名称
+- operators: 运营商名称
 - is_real：是否为真实 IP
 - is_cdn：是否为 CDN IP
 - cname：如果为 CDN IP，补充 CNAME 地址字段
@@ -252,6 +272,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 - _id：APP ID，MongoDB 自动生成
 - name：APP 名称
+- type: APP 分类
 - business_id：关联的业务 ID
 - notes：备注，用于自定义描述
 - avatar_pic_url：头像图片链接
@@ -261,7 +282,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 9. MAIL 表（mail）
 
 - _id：MAIL ID，MongoDB 自动生成
-- mail：邮件地址
+- name：邮件地址
 - business_id：关联的业务 ID
 - notes：备注，用于自定义描述
 - create_time：创建时间
@@ -274,6 +295,8 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 - regnumber：软件著作权注册 ID
 - release_date：软件发布时间
 - type：软件类型
+- company: 主办单位名称
+- company_type: 单位性质
 - business_id：关联的业务 ID
 - notes：备注，用于自定义描述
 - create_time：创建时间
@@ -314,7 +337,9 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 - _id：黑名单 ID，MongoDB 自动生成
 - type：黑名单类型，business/root_domain/sub_domain
-- ref_id：关联的业务 ID、根域名 ID 或子域名 ID
+- root_domain_id：关联的根域名 ID
+- sub_domain_id：关联的子域名 ID
+- business_id：关联的业务 ID
 - create_time：创建时间
 - update_time：修改时间
 
@@ -336,66 +361,63 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 ```python
 from pymongo import MongoClient, IndexModel, ASCENDING
 
-# NaN 连接MongoDB
+# 连接MongoDB
 client = MongoClient('mongodb://localhost:27017/')
 db = client['bbdb']
 
-# NaN 创建业务集合
+# 创建业务集合
 business_collection = db['business']
 business_collection.create_indexes([IndexModel([("name", ASCENDING)]), IndexModel([("url", ASCENDING)])])
 
-# NaN 创建根域名集合
+# 创建根域名集合
 root_domain_collection = db['root_domain']
 root_domain_collection.create_indexes([IndexModel([("name", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
 
-# NaN 创建子域名集合
+# 创建子域名集合
 sub_domain_collection = db['sub_domain']
 sub_domain_collection.create_indexes([IndexModel([("name", ASCENDING)]), IndexModel([("root_domain_id", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
 
-# NaN 创建站点集合
+# 创建站点集合
 site_collection = db['site']
 site_collection.create_indexes([IndexModel([("url", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
 
-# NaN 创建IP地址集合
+# 创建IP地址集合
 ip_address_collection = db['ip_address']
 ip_address_collection.create_indexes([IndexModel([("address", ASCENDING)]), IndexModel([("root_domain_id", ASCENDING)]), IndexModel([("sub_domain_id", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
 
-
-
-# NaN 创建微信公众号集合
+# 创建微信公众号集合
 wechat_public_account_collection = db['wechat_public_account']
 wechat_public_account_collection.create_indexes([IndexModel([("name", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
 
-# NaN 创建小程序集合
+# 创建小程序集合
 mini_program_collection = db['mini_program']
 mini_program_collection.create_indexes([IndexModel([("name", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
 
-# NaN 创建APP集合
+# 创建APP集合
 app_collection = db['app']
 app_collection.create_indexes([IndexModel([("name", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
 
-# NaN 创建邮件集合
+# 创建邮件集合
 mail_collection = db['mail']
 mail_collection.create_indexes([IndexModel([("mail", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
 
-# NaN 创建软件著作权集合
+# 创建软件著作权集合
 software_copyright_collection = db['software_copyright']
 software_copyright_collection.create_indexes([IndexModel([("name", ASCENDING)]), IndexModel([("regnumber", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
 
-
-# NaN 创建数据包集合
+# 创建数据包集合
 data_packet_collection = db['data_packet']
 data_packet_collection.create_indexes([IndexModel([("root_domain_id", ASCENDING)]), IndexModel([("sub_domain_id", ASCENDING)]), IndexModel([("ip_address_id", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
 
-# NaN 创建Github项目监测集合
+# 创建Github项目监测集合
 github_project_monitor_collection = db['github_project_monitor']
 github_project_monitor_collection.create_indexes([IndexModel([("url", ASCENDING)])])
 
-# NaN 创建Github用户/组织监测集合
+# 创建Github用户/组织监测集合
 github_user_organization_monitor_collection = db['github_user_organization_monitor']
 github_user_organization_monitor_collection.create_indexes([IndexModel([("name", ASCENDING)])])
 
-# NaN 创建黑名单集合
+# 创建黑名单集合
 blacklist_collection = db['blacklist']
 blacklist_collection.create_indexes([IndexModel([("type", ASCENDING)]), IndexModel([("ref_id", ASCENDING)])])
 ```
@@ -484,12 +506,20 @@ print("Database 'bbdb' deleted.")
 - <https://github.com/Young873/Firefly-SRC>
 
 ## NaN.4 更新日志
+
+2023 年 10 月 15 日
+
+- [add]: 添加了 quake 导出数据导入 bbdb 的功能
+- [add]: 添加了清理 bbdb 数据库的功能
+- [update]: 更新了 bbdb 数据库设计及 readme
+
 2023 年 10 月 12 日
-- [update]: 修复bbdb_arl.py脚本的bug,贴上运行成功的截图
 
-2023 年 10 月 10日
+- [update]: 修复 bbdb_arl.py 脚本的 bug,贴上运行成功的截图
 
-- [add]: 完成arl和bbdb的初步联动的命令行版，并在github发布此项目
+2023 年 10 月 10 日
+
+- [add]: 完成 arl 和 bbdb 的初步联动的命令行版，并在 github 发布此项目
 
 2023 年 10 月 1 日
 
