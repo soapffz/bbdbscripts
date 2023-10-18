@@ -1,5 +1,5 @@
 """
-文件名: batch_import_from_quake_to_bbdb.py
+文件名: bbdb_batch_import_from_quake.py
 作者: soapffz
 创建日期: 2023年10月15日
 最后修改日期: 2023年10月15日
