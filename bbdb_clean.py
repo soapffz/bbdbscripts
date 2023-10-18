@@ -1,5 +1,5 @@
 """
-文件名: clean_bbdb.py
+文件名: bbdb_clean.py
 作者: soapffz
 创建日期: 2023年10月1日
 最后修改日期: 2023年10月15日
