@@ -176,7 +176,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 2. 根域名表（root_domain）
 
-- _id：根域名 ID，MongoDB 自动生成
+- id：根域名 ID，MongoDB 自动生成
 - name：根域名名称
 - icpregnum：icp 备案号名称
 - company: 主办单位名称
@@ -188,7 +188,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 3. 子域名表（sub_domain）
 
-- _id：子域名 ID，MongoDB 自动生成
+- id：子域名 ID，MongoDB 自动生成
 - name：子域名名称
 - icpregnum：icp 备案号名称
 - company: 主办单位名称
@@ -201,17 +201,22 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 4. 站点表（site）
 
-- _id：站点 ID，MongoDB 自动生成
+- id：站点 ID，MongoDB 自动生成
 - url：站点 URL
 - status：状态码
 - title：网站标题
+- hostname: 站点主机名
+- ip: 响应的服务器 ip
+- http_server: 服务器版本信息
+- body_length: 返回包长度
+- headers: 返回的请求包头
 - keywords: 网站关键词，字符串列表
 - applications: 应用名称，字符串列表
 - applications_categories: 应用类别，字符串列表
 - applications_types: 应用类型，字符串列表
 - applications_levels: 应用层级，字符串列表
 - application_manufacturer: 应用生产厂商，字符串列表
-- fingerprint：网站指纹
+- fingerprint：网站指纹，字符串一级列表
 - root_domain_id：关联的根域名 ID
 - sub_domain_id：关联的子域名 ID
 - business_id：关联的业务 ID
@@ -221,7 +226,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 5. IP 地址表（ip）
 
-- _id：IP 地址 ID，MongoDB 自动生成
+- id：IP 地址 ID，MongoDB 自动生成
 - address：IP 地址
 - port：端口号
 - service_name：服务名称，如 Threema
@@ -248,7 +253,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 6. 微信公众号表（wechat_public_account）
 
-- _id：微信公众号 ID，MongoDB 自动生成
+- id：微信公众号 ID，MongoDB 自动生成
 - name：微信公众号名称
 - wechatid：微信公众号 ID
 - business_id：关联的业务 ID
@@ -260,7 +265,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 7. 小程序表（mini_program）
 
-- _id：小程序 ID，MongoDB 自动生成
+- id：小程序 ID，MongoDB 自动生成
 - name：小程序名称
 - business_id：关联的业务 ID
 - notes：备注，用于自定义描述
@@ -270,7 +275,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 8. APP 表（app）
 
-- _id：APP ID，MongoDB 自动生成
+- id：APP ID，MongoDB 自动生成
 - name：APP 名称
 - type: APP 分类
 - business_id：关联的业务 ID
@@ -281,7 +286,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 9. MAIL 表（mail）
 
-- _id：MAIL ID，MongoDB 自动生成
+- id：MAIL ID，MongoDB 自动生成
 - name：邮件地址
 - business_id：关联的业务 ID
 - notes：备注，用于自定义描述
@@ -290,7 +295,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 10. 软件著作权表（software_copyright）
 
-- _id：software_copyright ID，MongoDB 自动生成
+- id：software_copyright ID，MongoDB 自动生成
 - name：software_copyright 名称
 - regnumber：软件著作权注册 ID
 - release_date：软件发布时间
@@ -304,7 +309,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 11. 数据包表（data_packet）
 
-- _id：数据包 ID，MongoDB 自动生成
+- id：数据包 ID，MongoDB 自动生成
 - request：原始请求报文
 - response：返回报文
 - protocol：协议，字符串类型
@@ -319,7 +324,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 12. Github 项目监测表（github_project_monitor）
 
-- _id：项目 ID，MongoDB 自动生成
+- id：项目 ID，MongoDB 自动生成
 - url：项目链接
 - notes：备注，用于自定义描述
 - create_time：创建时间
@@ -327,7 +332,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 13. Github 用户/组织监测表（github_user_organization_monitor）
 
-- _id：用户/组织 ID，MongoDB 自动生成
+- id：用户/组织 ID，MongoDB 自动生成
 - name：用户/组织名称
 - notes：备注，用于自定义描述
 - create_time：创建时间
@@ -335,7 +340,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 14. 黑名单表(blacklist)
 
-- _id：黑名单 ID，MongoDB 自动生成
+- id：黑名单 ID，MongoDB 自动生成
 - type：黑名单类型，business/root_domain/sub_domain
 - root_domain_id：关联的根域名 ID
 - sub_domain_id：关联的子域名 ID
@@ -433,13 +438,13 @@ blacklist_collection.create_indexes([IndexModel([("type", ASCENDING)]), IndexMod
 备份
 
 ```shell
-mongodump --uri="mongo连接URI" --gzip --archive=backup.gz --numParallelCollections=4
+mongodump --uri="mongodb://localhost:27017" --gzip --archive=backup.gz --numParallelCollections=4
 ```
 
 还原
 
 ```shell
-mongorestore --uri="mongo连接URI" --gzip --archive=backup.gz --numParallelCollections=4
+mongorestore --uri="mongodb://localhost:27017" --gzip --archive=backup.gz --numParallelCollections=4
 ```
 
 - 使用--gzip 选项：这个选项可以让 mongodump 在下载数据的同时进行压缩，这样可以减少需要下载的数据量，可能会加快备份速度
@@ -506,6 +511,13 @@ print("Database 'bbdb' deleted.")
 - <https://github.com/Young873/Firefly-SRC>
 
 ## NaN.4 更新日志
+
+2023 年 10 月 19 日
+
+- [add]: 添加了 enscango 合并数据导入 bbdb 的功能
+- [add]: 添加了下载 bbdb 所有根域名的功能
+- [update]: 更新了清理 bbdb 数据库的功能
+- [update]: 更新了 bbdb 数据库设计及 readme
 
 2023 年 10 月 15 日
 
