@@ -134,7 +134,7 @@ ql repo https://github.com/soapffz/bbdbscripts.git "bbdb_*.py" "README.md"
 ### NaN.4.1 docker
 
 ```shell
-docker volume create bbmongodb_volume && docker run -d -p 27017:27017 -v bbmongodb_volume:/data/db --name bbmongodb mongo:4.4
+docker volume create bbmongodb_volume && docker run -d -p 27017:27017 -v bbmongodb_volume:/data/db --name bbmongodb --restart always mongo:4.4
 ```
 
 ### NaN.4.2 mac m1 上
