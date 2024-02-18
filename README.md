@@ -1,8 +1,8 @@
-## NaN.1 目录
+## 目录
 
 _个人自用_
 
-## NaN.2 BBDBSCRIPTS
+## BBDBSCRIPTS
 
 `BB` 是 `bugbounty` 的缩写
 
@@ -12,132 +12,19 @@ _个人自用_
 
 数据库选型：经咨询 `Cursor`中的 `FAST GPT-4`，选定 `MongoDB`，`docker` 容器类型，版本选择最新的 `LTS` 版本 `4.4` 版本，如果用 [Digitalocean](digitalocean.com) 只创建 `mongo` 也是可以选择这个版本的
 
-## NaN.3 此仓库脚本使用方式
+## 此仓库脚本使用方式
 
-所有脚本都在开头注释中解释了详细用法
+本脚本使用n8n和部分python脚本配合使用，n8n 稳定内容暂未放出
 
-部分脚本使用[青龙定时平台](https://github.com/whyour/qinglong)处理
+## 数据库启动及初始化
 
-### NaN.3.1 青龙脚本拉取及环境变量设置
-
-#### 拉取方式
-
-```
-ql repo https://github.com/soapffz/bbdbscripts.git "bbdb_*.py" "README.md"
-```
-
-- 拉取所有以"bbdb\_"开头，后缀为".py"的文件，同时排除"README.md"文件
-
-#### 青龙变量清单
-
-- `BBDB_ARL_API_URL`:
-- `BBDB_ARL_API_KEY`:
-- `BBDB_MONGODB_URI`: mongodb 连接的字符串，格式为：mongodb+srv://用户名:密码@数据库地址/"
-- `BBDB_API_SHODAN`: [Shodan](https://www.shodan.io/)的 `API`
-- `BBDB_API_QUAKE`: [360 Quake](https://quake.360.net/quake/#/index) 的 `API`
-- `BBDB_API_FOFA_MAIL`: [FOFA](https://fofa.info/) 的邮箱
-- `BBDB_API_FOFA_API`: [FOFA](https://fofa.info/) 的的`API`
-- `BBDB_API_HUNTER`: [奇安信鹰图 HUNTER](https://hunter.qianxin.com/home/userInfo)的`API`
-- `BBDB_API_ZOOMEYE_MAIL`: [Zoomeye](https://www.zoomeye.org/)的 邮箱
-- `BBDB_API_ZOOMEYE_PASSWORD`: [Zoomeye](https://www.zoomeye.org/)的 密码
-- `BBDB_API_ZOOMEYE_API`: [Zoomeye](https://www.zoomeye.org/)的 `API`
-
-长期使用可以维护一个`env.json`，在青龙面板环境变量菜单批量导入导出，注意没有的空字段删除后再上传
-
-<details>
-<summary>env.json模版</summary>
-
-```
-[
-    {
-        "name": "BBDB_ARL_API_URL",
-        "value": "",
-        "remarks": "ARL API URL"
-    },
-    {
-        "name": "BBDB_ARL_API_KEY",
-        "value": "",
-        "remarks": "ARL API Key"
-    },
-    {
-        "name": "BBDB_MONGODB_HOST",
-        "value": "",
-        "remarks": "MongoDB Host"
-    },
-    {
-        "name": "BBDB_MONGODB_PORT",
-        "value": "",
-        "remarks": "MongoDB Port"
-    },
-    {
-        "name": "BBDB_MONGODB_DB",
-        "value": "",
-        "remarks": "MongoDB Database"
-    },
-    {
-        "name": "BBDB_MONGODB_USER",
-        "value": "",
-        "remarks": "MongoDB User"
-    },
-    {
-        "name": "BBDB_MONGODB_PASSWORD",
-        "value": "",
-        "remarks": "MongoDB Password"
-    },
-    {
-        "name": "BBDB_API_SHODAN",
-        "value": "",
-        "remarks": "Shodan API"
-    },
-    {
-        "name": "BBDB_API_QUAKE",
-        "value": "",
-        "remarks": "360 Quake API"
-    },
-    {
-        "name": "BBDB_API_FOFA_MAIL",
-        "value": "",
-        "remarks": "FOFA Mail"
-    },
-    {
-        "name": "BBDB_API_FOFA_API",
-        "value": "",
-        "remarks": "FOFA API"
-    },
-    {
-        "name": "BBDB_API_HUNTER",
-        "value": "",
-        "remarks": "奇安信鹰图 HUNTER API"
-    },
-    {
-        "name": "BBDB_API_ZOOMEYE_MAIL",
-        "value": "",
-        "remarks": "Zoomeye Mail"
-    },
-    {
-        "name": "BBDB_API_ZOOMEYE_PASSWORD",
-        "value": "",
-        "remarks": "Zoomeye Password"
-    },
-    {
-        "name": "BBDB_API_ZOOMEYE_API",
-        "value": "",
-        "remarks": "Zoomeye API"
-    }
-]
-```
-
-</details>
-
-## NaN.4 数据库启动及初始化
-
-### NaN.4.1 docker
+### docker
 
 ```shell
 docker volume create bbmongodb_volume && docker run -d -p 27017:27017 -v bbmongodb_volume:/data/db --name bbmongodb --restart always mongo:4.4
 ```
 
-### NaN.4.2 mac m1 上
+### mac m1 上
 
 ```shell
 brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services start mongodb-community@4.4 && mongorestore --drop --uri="mongodb://localhost:27017" 你的备份文件
@@ -145,15 +32,11 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 本地调试灰常快，建议本地调试好了再上远程
 
-## NaN.5 备份方式
+## 备份方式
 
-1. 在 docker 容器运行的机器上映射到主机本地目录/直接用云服务商提供的数据库服务做第 1 次备份
+使用n8n配合云服务的对象存储，存储指定数量的备份
 
-2. 定时备份数据库到云盘做第 2 次备份
-
-3. 本地使用时同步一份做第 3 次备份
-
-## NaN.6 维护数据库的原则
+## 维护数据库的原则
 
 1. 只收集在 SRC 赏金范围内的资产，超过范围的定期手动删除
 
@@ -342,15 +225,15 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 - id：黑名单 ID，MongoDB 自动生成
 - type：黑名单类型，business/root_domain/sub_domain
+- name: 黑名单内容，比如子域名名称
 - root_domain_id：关联的根域名 ID
-- sub_domain_id：关联的子域名 ID
 - business_id：关联的业务 ID
 - create_time：创建时间
 - update_time：修改时间
 
 </details>
 
-## NaN.8 数据库初始化
+## 数据库初始化
 
 - 资产快速提取可以使用我写的[asset_processing.py](https://github.com/soapffz/hackscripts/blob/main/asset_processing.py)
 
@@ -429,7 +312,7 @@ blacklist_collection.create_indexes([IndexModel([("type", ASCENDING)]), IndexMod
 
 </details>
 
-## NaN.1 mongodump 和 mongorestore 备份和还原（比较过时）
+## mongodump 和 mongorestore 备份和还原（比较过时）
 
 - mongodump 和 mongorestore 命令在 MongoDB 4.4 版本中已被弃用，建议使用 mongocli 进行备份和恢复操作 \*
 
@@ -471,7 +354,7 @@ print("Database 'bbdb' deleted.")
 
 ```
 
-## NaN.1 MongoDB CLI 备份和还原(支持的环境下可以尝试，我的不支持)
+## MongoDB CLI 备份和还原(支持的环境下可以尝试，我的不支持)
 
 首先，你需要安装并配置 MongoDB CLI。你可以在 MongoDB 的官方文档中找到安装和配置的详细步骤。
 
@@ -502,15 +385,19 @@ print("Database 'bbdb' deleted.")
 
 注意：这些命令需要在你的系统 PATH 中。如果你使用的是 MongoDB 的官方安装包，那么这些命令应该已经在 PATH 中了。如果不在，你需要手动添加它们。
 
-## NaN.2 相关脚本运行截图展示
+## 相关脚本运行截图展示
 
 ![bbdb_arl.py](https://img.soapffz.com/soapsgithubimgs/bbdb_arl演示截图-2023年10月12日.png)
 
-## NaN.3 参考的项目列表
+## 参考的项目列表
 
 - <https://github.com/Young873/Firefly-SRC>
 
-## NaN.4 更新日志
+## 更新日志
+
+2024 年 2 月
+
+- [update]: 修改运行框架为n8n，修改相关readme及极少部分数据库设计
 
 2023 年 10 月 19 日
 
