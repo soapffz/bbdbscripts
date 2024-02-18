@@ -40,7 +40,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 1. 只收集在 SRC 赏金范围内的资产，超过范围的定期手动删除
 
-## NaN.7 数据库资产类型设计
+## 数据库资产类型设计
 
 数据库名称:`bbdb`
 
