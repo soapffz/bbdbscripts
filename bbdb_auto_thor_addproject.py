@@ -129,7 +129,7 @@ def login_and_update_token(token, type_code):
                 if login_data['errcode'] == 0:
                     token = login_data['ret']['token']
                     # 更新环境变量
-                    os.environ['ENV_NAME'] = token  # 假设ENV_NAME是存储token的环境变量
+                    update_env_variable(token)  # 更新环境变量
                     print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 登录成功，token已更新。")
                     return token
                 else:
@@ -200,7 +200,6 @@ def update_env_variable(env_value):
         if env.get('name') == ENV_NAME:
             env_id = env.get('id')
             break
-
     if not env_id:
         print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 未找到环境变量 {ENV_NAME}")
         return False
