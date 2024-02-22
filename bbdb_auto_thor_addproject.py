@@ -297,8 +297,8 @@ def check_login_and_fetch_projects():
 
     if response.status_code == 200 and response_data["errcode"] == 0:
         projects = response_data["ret"]["data"]
-        ongoing_projects = [project for project in projects if project["states"] == "doing"]
-        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 当前已登录，并成功获取进行中的项目信息。")
+        ongoing_projects = [project for project in projects if project["states"] in ["doing", "apply"]]
+        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 当前已登录，并成功获取进行中和申请中的项目信息。")
         return True, ongoing_projects
     elif response_data["errcode"] == 401:
         if response_data["errmsg"] in ["权限鉴定失败", "登录失败或未登录"]:
@@ -309,7 +309,6 @@ def check_login_and_fetch_projects():
     else:
         print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 访问失败，错误码：{response_data['errcode']}，错误消息：{response_data['errmsg']}")
         return False, []
-
 
 def access_project_list_and_compare(token, my_projects):
     """
@@ -329,28 +328,45 @@ def access_project_list_and_compare(token, my_projects):
         # 过滤掉ID为9999的项目
         projects = [project for project in projects if project["id"] != 9999]
         if projects:  # 确保过滤后仍有项目
-            latest_project = projects[0]  # 假设第一个项目是最新的
-            if latest_project["id"] in [p["id"] for p in my_projects]:
-                print(f"您已加入当前最新项目：{latest_project['name']}")
-            else:
-                print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 尝试加入最新项目：{latest_project['name']}")
-                # 此处省略参加项目的代码，假设已实现
-                # 如果参加成功，可以调用access_my_project_list(token)重新获取我的项目列表
+            for project in projects:
+                if project["id"] in [p["id"] for p in my_projects]:
+                    # 检查项目状态，区分已加入和申请中
+                    if project["states"] == "apply":
+                        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 最新项目：{project['name']} 已申请")
+                    else:
+                        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 您已加入当前最新项目：{project['name']}")
+                    break  # 找到最新项目后退出循环
+                else:
+                    # 尝试加入项目的逻辑保持不变
+                    sign_response = requests.get(f"https://www.bountyteam.com/web/v1/project/hacker/signProject?id={project['id']}", headers=headers)
+                    if sign_response.status_code == 200 and sign_response.json()["errcode"] == 0:
+                        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 成功申请加入项目：{project['name']}")
+                        # 调用bark_push进行推送
+                        bark_push("雷神众测新项目申请通知", f"雷神众测新项目申请成功\n\n{time.strftime('%Y-%m-%d-%H-%M-%S')} [＋] 项目状态：\n\n【waiting 】【{project['name']}】申请中")
+                        break  # 成功申请后退出循环
+                    elif sign_response.json()["errcode"] == 200:
+                        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 当前最新项目：{project['name']} 已申请")
+                        # 不退出循环，继续检查下一个项目
+                    else:
+                        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 申请加入项目失败：{sign_response.json()['errmsg']}")
+                        break  # 如果申请失败，退出循环
         else:
             print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 没有找到符合条件的最新项目。")
     else:
         print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 获取项目列表失败。")
 
-
 def print_ongoing_projects(ongoing_projects):
     """
-    打印进行中的项目状态。
+    打印进行中和申请中的项目状态。
     """
-    print(f"\n{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 进行中项目状态：")
+    print(f"\n{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 项目状态：")
     for project in ongoing_projects:
-        print(
-            f"{project['name']}，剩余天数 {project['surplus']} 天，奖金池进度 {project['progress']} %，{project['lowriskreward']}-{project['highriskreward']}"
-        )
+        if project["states"] == "apply":
+            print(f"【waiting 】【{project['name']}】申请中")
+        else:
+            print(
+                f"{project['name']}，剩余天数 {project['surplus']} 天，奖金池进度 {project['progress']} %，{project['lowriskreward']}-{project['highriskreward']}"
+            )
 
 
 def bark_push(title, content):
