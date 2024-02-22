@@ -352,7 +352,9 @@ def access_project_list_and_compare(token, my_projects):
                         print(
                             f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 您已加入当前最新项目：{project['name']}"
                         )
-                    project_status_info = capture_project_status_info(my_projects)
+                    project_status_info = capture_project_status_info(
+                        my_projects, token
+                    )
                     print(project_status_info)
                     break  # 找到最新项目后退出循环
                 else:
@@ -371,7 +373,7 @@ def access_project_list_and_compare(token, my_projects):
                         # 重新获取项目状态并打印
                         _, updated_projects = check_login_and_fetch_projects()
                         project_status_info = capture_project_status_info(
-                            updated_projects
+                            updated_projects, token
                         )
                         bark_push(
                             "雷神众测新项目申请通知",
@@ -396,14 +398,30 @@ def access_project_list_and_compare(token, my_projects):
         print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 获取项目列表失败。")
 
 
-def capture_project_status_info(ongoing_projects):
+def capture_project_status_info(ongoing_projects, token):
     """
     获取进行中和申请中的项目状态信息，用于推送。
     """
     project_status_info = f"\n{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 项目状态：\n"
+    headers = {
+        "Authorization": token,
+        "Referer": "https://www.bountyteam.com/hackerservice/projectPage",
+    }
     for project in ongoing_projects:
         if project["states"] == "apply":
             project_status_info += f"【waiting 】【{project['name']}】申请中\n"
+        elif project["states"] == "doing":
+            response = requests.get(
+                f"https://www.bountyteam.com/web/v1/project/getProjectdetail?id={project['id']}",
+                headers=headers,
+            )
+            if response.status_code == 200:
+                project_detail = response.json()
+                if (
+                    project_detail.get("errcode") == 0
+                    and project_detail["ret"]["data"]["testRange"] is not None
+                ):
+                    project_status_info += f"{project['name']}，剩余天数 {project['surplus']} 天，奖金池进度 {project['progress']} %，{project['lowriskreward']}-{project['highriskreward']}\n"
         else:
             project_status_info += f"{project['name']}，剩余天数 {project['surplus']} 天，奖金池进度 {project['progress']} %，{project['lowriskreward']}-{project['highriskreward']}\n"
     return project_status_info
