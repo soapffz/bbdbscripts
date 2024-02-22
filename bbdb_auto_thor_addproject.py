@@ -282,7 +282,9 @@ def check_login_and_fetch_projects():
     """
     token = os.getenv(ENV_NAME)
     if not token:
-        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 未找到环境变量中的Authorization token。")
+        print(
+            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 未找到环境变量中的Authorization token。"
+        )
         return False, []
 
     headers = {
@@ -297,18 +299,29 @@ def check_login_and_fetch_projects():
 
     if response.status_code == 200 and response_data["errcode"] == 0:
         projects = response_data["ret"]["data"]
-        ongoing_projects = [project for project in projects if project["states"] in ["doing", "apply"]]
-        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 当前已登录，并成功获取进行中和申请中的项目信息。")
+        ongoing_projects = [
+            project for project in projects if project["states"] in ["doing", "apply"]
+        ]
+        print(
+            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 当前已登录，并成功获取进行中和申请中的项目信息。"
+        )
         return True, ongoing_projects
     elif response_data["errcode"] == 401:
         if response_data["errmsg"] in ["权限鉴定失败", "登录失败或未登录"]:
-            print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 登录失败或未登录，需要重新登录。")
+            print(
+                f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 登录失败或未登录，需要重新登录。"
+            )
         else:
-            print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 未知错误，错误消息：{response_data['errmsg']}")
+            print(
+                f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 未知错误，错误消息：{response_data['errmsg']}"
+            )
         return False, []
     else:
-        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 访问失败，错误码：{response_data['errcode']}，错误消息：{response_data['errmsg']}")
+        print(
+            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 访问失败，错误码：{response_data['errcode']}，错误消息：{response_data['errmsg']}"
+        )
         return False, []
+
 
 def access_project_list_and_compare(token, my_projects):
     """
@@ -332,41 +345,68 @@ def access_project_list_and_compare(token, my_projects):
                 if project["id"] in [p["id"] for p in my_projects]:
                     # 检查项目状态，区分已加入和申请中
                     if project["states"] == "apply":
-                        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 最新项目：{project['name']} 已申请")
+                        print(
+                            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 最新项目：{project['name']} 已申请"
+                        )
                     else:
-                        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 您已加入当前最新项目：{project['name']}")
+                        print(
+                            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 您已加入当前最新项目：{project['name']}"
+                        )
+                    project_status_info = capture_project_status_info(my_projects)
+                    print(project_status_info)
                     break  # 找到最新项目后退出循环
                 else:
                     # 尝试加入项目的逻辑保持不变
-                    sign_response = requests.get(f"https://www.bountyteam.com/web/v1/project/hacker/signProject?id={project['id']}", headers=headers)
-                    if sign_response.status_code == 200 and sign_response.json()["errcode"] == 0:
-                        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 成功申请加入项目：{project['name']}")
-                        # 调用bark_push进行推送
-                        bark_push("雷神众测新项目申请通知", f"雷神众测新项目申请成功\n\n{time.strftime('%Y-%m-%d-%H-%M-%S')} [＋] 项目状态：\n\n【waiting 】【{project['name']}】申请中")
+                    sign_response = requests.get(
+                        f"https://www.bountyteam.com/web/v1/project/hacker/signProject?id={project['id']}",
+                        headers=headers,
+                    )
+                    if (
+                        sign_response.status_code == 200
+                        and sign_response.json()["errcode"] == 0
+                    ):
+                        print(
+                            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 成功申请加入项目：{project['name']}"
+                        )
+                        # 重新获取项目状态并打印
+                        _, updated_projects = check_login_and_fetch_projects()
+                        project_status_info = capture_project_status_info(
+                            updated_projects
+                        )
+                        bark_push(
+                            "雷神众测新项目申请通知",
+                            f"雷神众测新项目申请成功\n\n{project_status_info}",
+                        )
                         break  # 成功申请后退出循环
                     elif sign_response.json()["errcode"] == 200:
-                        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 当前最新项目：{project['name']} 已申请")
+                        print(
+                            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 当前最新项目：{project['name']} 已申请"
+                        )
                         # 不退出循环，继续检查下一个项目
                     else:
-                        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 申请加入项目失败：{sign_response.json()['errmsg']}")
+                        print(
+                            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 申请加入项目失败：{sign_response.json()['errmsg']}"
+                        )
                         break  # 如果申请失败，退出循环
         else:
-            print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 没有找到符合条件的最新项目。")
+            print(
+                f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 没有找到符合条件的最新项目。"
+            )
     else:
         print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 获取项目列表失败。")
 
-def print_ongoing_projects(ongoing_projects):
+
+def capture_project_status_info(ongoing_projects):
     """
-    打印进行中和申请中的项目状态。
+    获取进行中和申请中的项目状态信息，用于推送。
     """
-    print(f"\n{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 项目状态：")
+    project_status_info = f"\n{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 项目状态：\n"
     for project in ongoing_projects:
         if project["states"] == "apply":
-            print(f"【waiting 】【{project['name']}】申请中")
+            project_status_info += f"【waiting 】【{project['name']}】申请中\n"
         else:
-            print(
-                f"{project['name']}，剩余天数 {project['surplus']} 天，奖金池进度 {project['progress']} %，{project['lowriskreward']}-{project['highriskreward']}"
-            )
+            project_status_info += f"{project['name']}，剩余天数 {project['surplus']} 天，奖金池进度 {project['progress']} %，{project['lowriskreward']}-{project['highriskreward']}\n"
+    return project_status_info
 
 
 def bark_push(title, content):
@@ -377,9 +417,9 @@ def bark_push(title, content):
     url = f"https://api.day.app/{bark_key}/{title}/{content}"
     response = requests.get(url)
     if response.status_code == 200:
-        print("推送成功")
+        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 推送成功")
     else:
-        print("推送失败")
+        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 推送失败")
 
 
 def main():
@@ -390,7 +430,9 @@ def main():
     if not is_logged_in:
         token = login_and_update_token(YUNMA_TOKEN, YUNMA_BBDB_THOR_TYPECODE)
         if not token:
-            print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 登录操作失败，未能获取token。")
+            print(
+                f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 登录操作失败，未能获取token。"
+            )
             return
         else:
             # 如果登录成功并获取到了token，重新检查登录状态并获取进行中的项目
@@ -401,9 +443,7 @@ def main():
 
     # 假设access_project_list_and_compare函数需要token和我的项目列表作为参数
     access_project_list_and_compare(token, my_projects)
-    # 打印进行中的项目信息
-    print_ongoing_projects(my_projects)
-    # 如果加入了新的项目，可以在这里调用bark_push进行推送
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
