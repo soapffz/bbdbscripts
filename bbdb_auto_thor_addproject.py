@@ -1,3 +1,8 @@
+# 作者: soapffz
+# 创建时间: 2024年2月21日
+# 最后更新时间: 2024年2月22日
+# 描述: 自动登录雷神众测平台，获取并更新token，统计进行中项目信息，自动加入项目并推送bark
+
 import os
 import poplib
 from email.parser import BytesParser
@@ -175,7 +180,7 @@ def access_project_list(token):
     """
     headers = {"Authorization": token}
     response = requests.get(
-        "https://www.bountyteam.com/web/v1/project/getProjectList?size=10&page=1&search=&lastPush=1&projectType=&projectSubType=&status=&joinStatus=&ownership=",
+        "https://www.bountyteam.com/web/v1/project/getProjectList?size=20&page=1&search=&lastPush=1&projectType=&projectSubType=&status=&joinStatus=&ownership=",
         headers=headers,
     )
     project_list_data = response.json()
@@ -285,7 +290,7 @@ def check_login_and_fetch_projects():
         "Referer": "https://www.bountyteam.com/hackerservice/projectPage",
     }
     response = requests.get(
-        "https://www.bountyteam.com/web/v1/project/getpersonalprojectList?size=10&page=1&projectSubType=&projectType=&status=&search=",
+        "https://www.bountyteam.com/web/v1/project/getpersonalprojectList?size=20&page=1&projectSubType=&projectType=&status=&search=",
         headers=headers,
     )
     response_data = response.json()
@@ -316,7 +321,7 @@ def access_project_list_and_compare(token, my_projects):
         "Referer": "https://www.bountyteam.com/hackerservice/projectPage",
     }
     response = requests.get(
-        "https://www.bountyteam.com/web/v1/project/getProjectList?size=10&page=1&search=&lastPush=1&projectType=&projectSubType=&status=&joinStatus=&ownership=",
+        "https://www.bountyteam.com/web/v1/project/getProjectList?size=20&page=1&search=&lastPush=1&projectType=&projectSubType=&status=&joinStatus=&ownership=",
         headers=headers,
     )
     if response.status_code == 200 and response.json()["errcode"] == 0:
