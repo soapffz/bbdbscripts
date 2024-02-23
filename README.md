@@ -85,7 +85,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 4. 站点表（site）
 
 - id：站点 ID，MongoDB 自动生成
-- url：站点 URL
+- name：站点 URL
 - status：状态码
 - title：网站标题
 - hostname: 站点主机名
