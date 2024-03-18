@@ -2,157 +2,244 @@
 文件名: bbdb_clean.py
 作者: soapffz
 创建日期: 2023年10月1日
-最后修改日期: 2023年10月19日
+最后修改日期: 2024年3月18日
 
-1. 除了github_project_monitor和github_user_organization_monitor表，删除其他所有表中business_id为空，或者没有business_id字段的行
+以下清洗步骤建议不要调换顺序
 
-2. 删除sub_domain表没有root_domain_id的行，删除site、IP、data_packet这3个表没有root_domain_id或者没有sub_domain_id两个字段的行
-
-3. 在business、root_domain、sub_domain、wechat_public_account、mini_program、app、mail、software_copyright表中使用name作为唯一值，在site表中使用url作为唯一值，在ip表中，使用address和port联合作为唯一值，github_project_monitor、github_user_organization_monitor、data_packet、blacklist表没有唯一值，使用对应的关系使得有唯一值设定的保持唯一
-
-4. 所有有notes字段表，有notes字段但是为空的，设为"init by soapffz"
-
-5. 所有表创建时间create_time为空则将创建时间设置为2023年10月1日零点，更新时间为空则均置为现在
-
-6. 所有为列表的字段，列表中每一层也应当是唯一的
-
-7. 脚本开始时一次性读取所有表到内存中，在内存中完成所有操作后批量操作数据库，应同时兼容内存和处理速度
+1.删除所有表中有business_id、root_domain_id、sub_domain_id任何一个字段，但是其中任何一个字段为空的文档。
+2.将所有表中有business_id、root_domain_id、sub_domain_id字段，但是格式不是为string类型，而是ObjectId类型的地方转化为string类型。
+3.所有表中notes字段为空的文档，都将其设置为"set by soapffz"。
+4.每个表都必须有create_time和update_time字段，如果没有则创建，如果为空也将两个字段都设置为当前时间的北京时间。
+5.所有表中的name字段都应保持唯一，删除所有name字段重复的较老文档。
+6.使用business_id、root_domain_id、sub_domain_id去相应表中查找，但是没有查找到对应文档的文档，查找逻辑为business_id为business表中的_id，root_domain_id为root_domain表中的_id，sub_domain_id为sub_domain的_id。
 """
-from pymongo import MongoClient
-from datetime import datetime
+
+from pymongo import MongoClient, UpdateOne
+import os
+from datetime import datetime, timedelta
 from bson.objectid import ObjectId
 
-# 连接MongoDB
-client = MongoClient("mongodb://localhost:27017/")
-db = client["bbdb"]
+# 初始化MongoDB连接
+mongodb_uri = os.getenv("BBDB_MONGOURI")
+client = MongoClient(mongodb_uri)
+db = client['bbdb']
 
-# 定义需要处理的集合和它们的唯一字段
-collections_unique_fields = {
-    "business": "name",
-    "root_domain": "name",
-    "sub_domain": "name",
-    "wechat_public_account": "name",
-    "mini_program": "name",
-    "app": "name",
-    "mail": "name",
-    "software_copyright": "name",
-    "site": "url",
-    "ip_address": ["address", "port"],
-}
+def log(message, is_positive=True):
+    prefix = "[ + ]" if is_positive else "[ - ]"
+    print(f"{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')} {prefix} {message}")
 
-# 定义需要处理的集合和它们的notes字段
-collections_notes_fields = [
-    "business",
-    "root_domain",
-    "sub_domain",
-    "wechat_public_account",
-    "mini_program",
-    "app",
-    "mail",
-    "software_copyright",
-    "site",
-    "ip_address",
-    "github_project_monitor",
-    "github_user_organization_monitor",
-    "data_packet",
-    "blacklist",
-]
+def clean_empty_fields():
+    # 实现需求1
+    start_time = datetime.now()
+    total_deleted = 0  # 初始化删除文档的总数
 
-# 定义需要处理的集合和它们的create_time和update_time字段
-collections_time_fields = [
-    "business",
-    "root_domain",
-    "sub_domain",
-    "wechat_public_account",
-    "mini_program",
-    "app",
-    "mail",
-    "software_copyright",
-    "site",
-    "ip_address",
-    "github_project_monitor",
-    "github_user_organization_monitor",
-    "data_packet",
-    "blacklist",
-]
+    collections_to_clean = db.list_collection_names()
+    for collection_name in collections_to_clean:
+        collection = db[collection_name]
+        result = collection.delete_many({
+            "$or": [
+                {"$and": [{"business_id": {"$exists": True}}, {"business_id": {"$in": [None, ""]}}]},
+                {"$and": [{"root_domain_id": {"$exists": True}}, {"root_domain_id": {"$in": [None, ""]}}]},
+                {"$and": [{"sub_domain_id": {"$exists": True}}, {"sub_domain_id": {"$in": [None, ""]}}]}
+            ]
+        })
+        total_deleted += result.deleted_count
 
-# 定义所有需要处理的集合
-all_collections = (
-    set(collections_unique_fields.keys())
-    | set(collections_notes_fields)
-    | set(collections_time_fields)
-)
+    end_time = datetime.now()
+    elapsed_time = (end_time - start_time).total_seconds()
 
-# 读取所有数据到内存
-data = {}
-for collection_name in all_collections:
-    data[collection_name] = list(db[collection_name].find())
-
-
-def make_unique(value):
-    if value and isinstance(value[0], dict):
-        # 将字典中的列表转换为元组
-        value = [
-            {k: tuple(v) if isinstance(v, list) else v for k, v in d.items()}
-            for d in value
-        ]
-        return [dict(t) for t in set(tuple(d.items()) for d in value)]
-    elif value and isinstance(value[0], list):
-        return [list(t) for t in set(tuple(i) for i in value)]
+    # 根据处理的文档数量和耗时，输出相应的日志
+    if total_deleted > 0:
+        log(f"步骤1运行耗时：{int(elapsed_time)} s，共处理文档个数：{total_deleted}")
     else:
-        return list(set(value))
+        log(f"步骤1运行耗时：{int(elapsed_time)} s，未发现需要处理的文档。")
 
+def convert_id_to_string():
+    # 实现需求2
+    start_time = datetime.now()
+    total_converted = 0  # 初始化转换文档的总数
 
-# 处理数据
-for collection_name in all_collections:
-    unique_values = set()  # 初始化unique_values
-    new_data = []  # 创建新的列表来存储处理后的数据
-    for item in data[collection_name]:
-        # 删除business_id为空或者没有business_id字段的行
-        if "business_id" not in item or not item["business_id"]:
-            continue
-        # 删除sub_domain表没有root_domain_id的行，删除site、IP、data_packet这3个表没有root_domain_id或者没有sub_domain_id两个字段的行
-        if collection_name == "sub_domain" and (
-            "root_domain_id" not in item or not item["root_domain_id"]
-        ):
-            continue
-        if collection_name in ["site", "ip", "data_packet"] and (
-            "root_domain_id" not in item
-            or not item["root_domain_id"]
-            or "sub_domain_id" not in item
-            or not item["sub_domain_id"]
-        ):
-            continue
+    collections_to_convert = db.list_collection_names()
+    for collection_name in collections_to_convert:
+        collection = db[collection_name]
+        fields_to_convert = ["business_id", "root_domain_id", "sub_domain_id"]
+        updates = []
+        for document in collection.find({}):
+            update_fields = {}
+            for field in fields_to_convert:
+                if field in document and isinstance(document[field], ObjectId):
+                    update_fields[field] = str(document[field])
+            if update_fields:
+                updates.append(UpdateOne({"_id": document["_id"]}, {"$set": update_fields}))
+        if updates:
+            result = collection.bulk_write(updates)
+            total_converted += len(updates)
+            log(f"集合 {collection_name} 转换了 {len(updates)} 个文档中的ObjectId为字符串。")
 
-        else:
-            # 保持唯一值
-            if collection_name in collections_unique_fields:
-                unique_field = collections_unique_fields[collection_name]
-                if isinstance(unique_field, list):
-                    unique_value = tuple(item[field] for field in unique_field)
-                else:
-                    unique_value = item[unique_field]
-                if unique_value in unique_values:
+    end_time = datetime.now()
+    elapsed_time = (end_time - start_time).total_seconds()
+
+    # 根据处理的文档数量和耗时，输出相应的日志
+    if total_converted > 0:
+        log(f"步骤2运行耗时：{int(elapsed_time)} s，共处理文档个数：{total_converted}")
+    else:
+        log(f"步骤2运行耗时：{int(elapsed_time)} s，未发现需要处理的文档。")
+
+def set_default_notes():
+    # 实现需求3
+    start_time = datetime.now()
+    total_updated = 0  # 初始化更新文档的总数
+
+    collections_to_update = db.list_collection_names()
+    for collection_name in collections_to_update:
+        collection = db[collection_name]
+        query = {"notes": {"$in": [None, "", []]}}  # 匹配空字符串、null或空数组
+        update = {"$set": {"notes": "set by soapffz"}}
+        result = collection.update_many(query, update)
+        if result.modified_count > 0:
+            total_updated += result.modified_count
+            log(f"集合 {collection_name} 为 {result.modified_count} 个文档设置了默认notes。")
+
+    end_time = datetime.now()
+    elapsed_time = (end_time - start_time).total_seconds()
+
+    # 根据处理的文档数量和耗时，输出相应的日志
+    if total_updated > 0:
+        log(f"步骤3运行耗时：{int(elapsed_time)} s，共处理文档个数：{total_updated}")
+    else:
+        log(f"步骤3运行耗时：{int(elapsed_time)} s，未发现需要处理的文档。")
+
+def ensure_time_fields():
+    # 实现需求4
+    start_time = datetime.now()
+    total_updated = 0  # 初始化更新文档的总数
+
+    collections_to_update = db.list_collection_names()
+    for collection_name in collections_to_update:
+        collection = db[collection_name]
+        updates = []
+        # 获取当前北京时间
+        now = datetime.utcnow() + timedelta(hours=8)
+        documents = collection.find({})
+        for document in documents:
+            update_fields = {}
+            # 如果create_time或update_time不存在或为空，则设置它们为当前北京时间
+            if not document.get('create_time'):
+                update_fields['create_time'] = now
+            if not document.get('update_time'):
+                update_fields['update_time'] = now
+            # 如果需要更新字段，则添加到更新列表中
+            if update_fields:
+                updates.append(UpdateOne({'_id': document['_id']}, {'$set': update_fields}))
+        # 执行批量更新
+        if updates:
+            result = collection.bulk_write(updates)
+            total_updated += len(updates)
+            log(f"集合 {collection_name} 更新了 {len(updates)} 个文档的时间字段。")
+
+    end_time = datetime.now()
+    elapsed_time = (end_time - start_time).total_seconds()
+
+    # 根据处理的文档数量和耗时，输出相应的日志
+    if total_updated > 0:
+        log(f"步骤4运行耗时：{int(elapsed_time)} s，共处理文档个数：{total_updated}")
+    else:
+        log(f"步骤4运行耗时：{int(elapsed_time)} s，未发现需要处理的文档。")
+
+def ensure_unique_name():
+    # 实现需求5
+    start_time = datetime.now()
+    total_deleted = 0  # 初始化删除文档的总数
+
+    collections_to_update = db.list_collection_names()
+    for collection_name in collections_to_update:
+        collection = db[collection_name]
+        # 使用聚合管道查找重复的name值
+        pipeline = [
+            {"$group": {
+                "_id": "$name",
+                "uniqueIds": {"$push": "$_id"},
+                "count": {"$sum": 1}
+            }},
+            {"$match": {
+                "count": {"$gt": 1}
+            }}
+        ]
+        duplicates = collection.aggregate(pipeline)
+        for duplicate in duplicates:
+            # 保留最新的文档，删除其他重复的文档
+            # 假设_id越大，文档越新
+            ids_to_delete = duplicate["uniqueIds"][:-1]  # 保留最后一个ID，即最新的文档
+            if ids_to_delete:
+                result = collection.delete_many({"_id": {"$in": ids_to_delete}})
+                deleted_count = result.deleted_count
+                total_deleted += deleted_count
+                log(f"集合 '{collection_name}': 删除了 {deleted_count} 个重复的'name'字段文档。")
+
+    end_time = datetime.now()
+    elapsed_time = (end_time - start_time).total_seconds()
+
+    # 根据处理的文档数量和耗时，输出相应的日志
+    if total_deleted > 0:
+        log(f"步骤5运行耗时：{int(elapsed_time)} s，共处理文档个数：{total_deleted}")
+    else:
+        log(f"步骤5运行耗时：{int(elapsed_time)} s，未发现需要处理的文档。")
+
+def validate_references():
+    # 实现需求6，考虑到类型转换
+    start_time = datetime.now()
+    total_deleted = 0  # 初始化删除文档的总数
+
+    reference_fields = {
+        "business_id": "business",
+        "root_domain_id": "root_domain",
+        "sub_domain_id": "sub_domain"
+    }
+    collections_to_validate = db.list_collection_names()
+    for collection_name in collections_to_validate:
+        collection = db[collection_name]
+        for field, ref_collection_name in reference_fields.items():
+            # 检查引用集合是否存在
+            if ref_collection_name not in collections_to_validate:
+                log(f"引用的集合 '{ref_collection_name}' 不存在，跳过验证。", is_positive=False)
+                continue
+            ref_collection = db[ref_collection_name]
+            documents = collection.find({field: {"$exists": True, "$ne": None}})
+            ids_to_delete = []
+            for document in documents:
+                ref_id = document[field]
+                # 尝试将引用字段的值转换为ObjectId，以匹配对应集合中的_id
+                try:
+                    ref_id = ObjectId(ref_id)
+                except:
+                    # 如果转换失败，记录该文档以便删除，因为无法匹配有效的ObjectId
+                    ids_to_delete.append(document["_id"])
                     continue
-                else:
-                    unique_values.add(unique_value)
+                # 检查引用的文档是否存在
+                if not ref_collection.find_one({"_id": ref_id}):
+                    ids_to_delete.append(document["_id"])
+            # 删除引用不正确的文档
+            if ids_to_delete:
+                result = collection.delete_many({"_id": {"$in": ids_to_delete}})
+                deleted_count = result.deleted_count
+                total_deleted += deleted_count
+                log(f"集合 '{collection_name}': 删除了 {deleted_count} 个引用字段 '{field}' 不正确的文档。")
 
-            # 如果字段是列表，确保列表中的每个元素都是唯一的
-            for field, value in item.items():
-                if isinstance(value, list):
-                    item[field] = make_unique(value)
+    end_time = datetime.now()
+    elapsed_time = (end_time - start_time).total_seconds()
 
-            # 如果create_time和update_time为空，设置为2023年10月1日零点和当前时间
-            if "create_time" not in item or not item["create_time"]:
-                item["create_time"] = datetime(2023, 10, 1)
-            if "update_time" not in item or not item["update_time"]:
-                item["update_time"] = datetime.now()
+    # 根据处理的文档数量和耗时，输出相应的日志
+    if total_deleted > 0:
+        log(f"步骤6运行耗时：{int(elapsed_time // 60)} m {int(elapsed_time % 60)} s，共处理文档个数：{total_deleted}")
+    else:
+        log(f"步骤6运行耗时：{int(elapsed_time // 60)} m {int(elapsed_time % 60)} s，未发现需要处理的文档。")
 
-        new_data.append(item)  # 将处理后的数据添加到新的列表中
-
-    data[collection_name] = new_data  # 用新的列表替换原来的数据
-
-# 批量更新数据库
-for collection_name in collections_unique_fields.keys():
-    for item in data[collection_name]:
-        db[collection_name].replace_one({"_id": ObjectId(item["_id"])}, item)
+if __name__ == "__main__":
+    log("开始执行数据库清洗...")
+    clean_empty_fields()
+    convert_id_to_string()
+    set_default_notes()
+    ensure_time_fields()
+    ensure_unique_name()
+    validate_references()
+    log("数据库清洗完成。")
