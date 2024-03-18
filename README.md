@@ -110,6 +110,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 5. IP 地址表（ip）
 
 - id：IP 地址 ID，MongoDB 自动生成
+- name: IP 地址+端口号合并，类似 114.114.114.114:21，此字段设置只是为了方便去重
 - address：IP 地址
 - port：端口号
 - service_name：服务名称，如 Threema
@@ -190,30 +191,16 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 - create_time：创建时间
 - update_time：修改时间
 
-11. 数据包表（data_packet）
-
-- id：数据包 ID，MongoDB 自动生成
-- request：原始请求报文
-- response：返回报文
-- protocol：协议，字符串类型
-- is_vuln：是否包含漏洞
-- root_domain_id：关联的根域名 ID
-- sub_domain_id：关联的子域名 ID
-- ip_address_id：关联的 IP 地址 ID
-- business_id：关联的业务 ID
-- notes：备注，用于自定义描述
-- create_time：创建时间
-- update_time：修改时间
-
-12. Github 项目监测表（github_project_monitor）
+11. Github 项目监测表（github_project_monitor）
 
 - id：项目 ID，MongoDB 自动生成
+- name: 项目监测名称，比如 nuclei release 更新
 - url：项目链接
 - notes：备注，用于自定义描述
 - create_time：创建时间
 - update_time：修改时间
 
-13. Github 用户/组织监测表（github_user_organization_monitor）
+12. Github 用户/组织监测表（github_user_organization_monitor）
 
 - id：用户/组织 ID，MongoDB 自动生成
 - name：用户/组织名称
@@ -221,7 +208,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 - create_time：创建时间
 - update_time：修改时间
 
-14. 黑名单表(blacklist)
+13. 黑名单表(blacklist)
 
 - id：黑名单 ID，MongoDB 自动生成
 - type：黑名单类型，business/root_domain/sub_domain/url
@@ -247,67 +234,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 <summary>bbdb数据库初始化</summary>
 
 ```python
-from pymongo import MongoClient, IndexModel, ASCENDING
-
-# 连接MongoDB
-client = MongoClient('mongodb://localhost:27017/')
-db = client['bbdb']
-
-# 创建业务集合
-business_collection = db['business']
-business_collection.create_indexes([IndexModel([("name", ASCENDING)]), IndexModel([("url", ASCENDING)])])
-
-# 创建根域名集合
-root_domain_collection = db['root_domain']
-root_domain_collection.create_indexes([IndexModel([("name", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
-
-# 创建子域名集合
-sub_domain_collection = db['sub_domain']
-sub_domain_collection.create_indexes([IndexModel([("name", ASCENDING)]), IndexModel([("root_domain_id", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
-
-# 创建站点集合
-site_collection = db['site']
-site_collection.create_indexes([IndexModel([("url", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
-
-# 创建IP地址集合
-ip_address_collection = db['ip_address']
-ip_address_collection.create_indexes([IndexModel([("address", ASCENDING)]), IndexModel([("root_domain_id", ASCENDING)]), IndexModel([("sub_domain_id", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
-
-# 创建微信公众号集合
-wechat_public_account_collection = db['wechat_public_account']
-wechat_public_account_collection.create_indexes([IndexModel([("name", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
-
-# 创建小程序集合
-mini_program_collection = db['mini_program']
-mini_program_collection.create_indexes([IndexModel([("name", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
-
-# 创建APP集合
-app_collection = db['app']
-app_collection.create_indexes([IndexModel([("name", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
-
-# 创建邮件集合
-mail_collection = db['mail']
-mail_collection.create_indexes([IndexModel([("mail", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
-
-# 创建软件著作权集合
-software_copyright_collection = db['software_copyright']
-software_copyright_collection.create_indexes([IndexModel([("name", ASCENDING)]), IndexModel([("regnumber", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
-
-# 创建数据包集合
-data_packet_collection = db['data_packet']
-data_packet_collection.create_indexes([IndexModel([("root_domain_id", ASCENDING)]), IndexModel([("sub_domain_id", ASCENDING)]), IndexModel([("ip_address_id", ASCENDING)]), IndexModel([("business_id", ASCENDING)])])
-
-# 创建Github项目监测集合
-github_project_monitor_collection = db['github_project_monitor']
-github_project_monitor_collection.create_indexes([IndexModel([("url", ASCENDING)])])
-
-# 创建Github用户/组织监测集合
-github_user_organization_monitor_collection = db['github_user_organization_monitor']
-github_user_organization_monitor_collection.create_indexes([IndexModel([("name", ASCENDING)])])
-
-# 创建黑名单集合
-blacklist_collection = db['blacklist']
-blacklist_collection.create_indexes([IndexModel([("type", ASCENDING)]), IndexModel([("ref_id", ASCENDING)])])
+数据库设计还不稳定，暂时删除
 ```
 
 </details>
@@ -397,11 +324,12 @@ print("Database 'bbdb' deleted.")
 
 2024 年 3 月 18 日
 
-- \[ add \]: 添加在青龙平台上定时备份 bbdb 数据库到七牛云的脚本
+- \[ add \]: 添加在青龙平台上定时备份 bbdb 数据库到七牛云的脚本 bbdb_backup_to_qiniu.py
+- \[ update \]: 更新 bbdb_clean.py
 
 2024 年 2 月 24 日
 
-- \[ add \]: 添加某众测自动监测新项目并自动申请的脚本
+- \[ add \]: 添加某众测自动监测新项目并自动申请的脚本 bbdb_auto_thor_addproject.py
 
 2024 年 2 月
 
