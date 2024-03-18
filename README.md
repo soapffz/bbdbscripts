@@ -14,7 +14,7 @@ _个人自用_
 
 ## 此仓库脚本使用方式
 
-本脚本使用n8n和部分python脚本配合使用，n8n 稳定内容暂未放出
+本脚本使用 n8n 和部分 python 脚本配合使用，n8n 稳定内容暂未放出
 
 ## 数据库启动及初始化
 
@@ -34,7 +34,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 ## 备份方式
 
-使用n8n配合云服务的对象存储，存储指定数量的备份
+使用 n8n 配合云服务的对象存储，存储指定数量的备份
 
 ## 维护数据库的原则
 
@@ -397,41 +397,41 @@ print("Database 'bbdb' deleted.")
 
 2024 年 3 月 18 日
 
-- [ add ]: 添加在青龙平台上定时备份bbdb数据库到七牛云的脚本
+- \[ add \]: 添加在青龙平台上定时备份 bbdb 数据库到七牛云的脚本
 
 2024 年 2 月 24 日
 
-- [ add ]: 添加某众测自动监测新项目并自动申请的脚本
+- \[ add \]: 添加某众测自动监测新项目并自动申请的脚本
 
 2024 年 2 月
 
-- [update]: 修改运行框架为n8n，修改相关readme及减少部分数据库设计
+- \[ update \]: 修改运行框架为 n8n，修改相关 readme 及减少部分数据库设计
 
 2023 年 10 月 19 日
 
-- [add]: 添加了 enscango 合并数据导入 bbdb 的功能
-- [add]: 添加了下载 bbdb 所有根域名的功能
-- [update]: 更新了清理 bbdb 数据库的功能
-- [update]: 更新了 bbdb 数据库设计及 readme
+- \[ add \]: 添加了 enscango 合并数据导入 bbdb 的功能
+- \[ add \]: 添加了下载 bbdb 所有根域名的功能
+- \[ update \]: 更新了清理 bbdb 数据库的功能
+- \[ update \]: 更新了 bbdb 数据库设计及 readme
 
 2023 年 10 月 15 日
 
-- [add]: 添加了 quake 导出数据导入 bbdb 的功能
-- [add]: 添加了清理 bbdb 数据库的功能
-- [update]: 更新了 bbdb 数据库设计及 readme
+- \[ add \]: 添加了 quake 导出数据导入 bbdb 的功能
+- \[ add \]: 添加了清理 bbdb 数据库的功能
+- \[ update \]: 更新了 bbdb 数据库设计及 readme
 
 2023 年 10 月 12 日
 
-- [update]: 修复 bbdb_arl.py 脚本的 bug,贴上运行成功的截图
+- \[ update \]: 修复 bbdb_arl.py 脚本的 bug,贴上运行成功的截图
 
 2023 年 10 月 10 日
 
-- [add]: 完成 arl 和 bbdb 的初步联动的命令行版，并在 github 发布此项目
+- \[ add \]: 完成 arl 和 bbdb 的初步联动的命令行版，并在 github 发布此项目
 
 2023 年 10 月 1 日
 
-- [update]: 根据实际数据导入及问题分析，优化 bbdb 字段设计
+- \[ update \]: 根据实际数据导入及问题分析，优化 bbdb 字段设计
 
 2023 年 9 月 23 日
 
-- [init]: 项目启动
+- \[ init \]: 项目启动
