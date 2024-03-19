@@ -6,14 +6,15 @@
 
 1. 在脚本运行之前先在/ql目录git clone https://github.com/trickest/inventory.git git_trickest_inventory
 2. 本脚本处理所有子文件夹中的hostnames.txt和servers.txt文件，将新发现内容写入对应表中
-3.在处理 hostnames.txt 时，对于每个域名需要满足以下条件才能作为新子域名保存:
-(1)域名不在 blacklist_sub_domains 中
-(2)域名的根域名与当前处理的 root_domain_name 相同
-(3)域名不在 existing_sub_domains 中
-4.在处理 servers.txt 时，对于每个 URL，需要满足以下条件才能作为新站点保存:
-(1)URL 不在 blacklist_urls 中
-(2)提取出的主机名 hostname 要么在 existing_sub_domains 中，要么与当前 root_domain_name 相同
-(3)该 URL 在站点表 site 中不存在
+3. 在处理 hostnames.txt 时，对于每个域名需要满足以下条件才能作为新子域名保存:
+(1) 域名不在 blacklist_sub_domains 中
+(2) 域名的根域名与当前处理的 root_domain_name 相同
+(3) 域名不在 existing_sub_domains 中
+4. 在处理 servers.txt 时，对于每个 URL，需要满足以下条件才能作为新站点保存:
+(1) URL 不在 blacklist_urls 中
+(2) 提取出的主机名 hostname 要么在 existing_sub_domains 中，要么与当前 root_domain_name 相同
+(3) 该 URL 在站点表 site 中不存在
+5. business_id、root_domain_id、sub_domain_id均为string类型，分别对应business表、root_domain表、sub_domain表对应文档的类型为ObjectID类型的_id，请注意转化
 """
 import os
 from datetime import datetime, timezone, timedelta
