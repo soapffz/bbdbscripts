@@ -73,7 +73,7 @@ for root_domain in root_domains:
     
     if new_subdomain_docs:
         # 实际插入数据库操作
-        # db.sub_domain.insert_many(new_subdomain_docs)
+        db.sub_domain.insert_many(new_subdomain_docs)
         log_message(f"根域名 {domain_name} 插入了 {len(new_subdomain_docs)} 个新的子域名。")
 
 log_message("更新完成。")
