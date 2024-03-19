@@ -322,6 +322,10 @@ print("Database 'bbdb' deleted.")
 
 ## 更新日志
 
+2024 年 3 月 19 日
+
+- \[ add \]: 添加在青龙平台上使用trickest_inventory更新数据库的脚本 bbdb_update_by_git_trickest_inventory.py
+
 2024 年 3 月 18 日
 
 - \[ add \]: 添加在青龙平台上定时备份 bbdb 数据库到七牛云的脚本 bbdb_backup_to_qiniu.py
