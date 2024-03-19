@@ -2,7 +2,7 @@
 文件名: bbdb_clean.py
 作者: soapffz
 创建日期: 2023年10月1日
-最后修改日期: 2024年3月18日
+最后修改日期: 2024年3月19日
 
 以下清洗步骤建议不要调换顺序
 
@@ -186,44 +186,42 @@ def ensure_unique_name():
         log(f"步骤5运行耗时：{int(elapsed_time)} s，未发现需要处理的文档。")
 
 def validate_references():
-    # 实现需求6，考虑到类型转换
+    # 实现需求6
     start_time = datetime.now()
-    total_deleted = 0  # 初始化删除文档的总数
+    total_deleted = 0
 
     reference_fields = {
         "business_id": "business",
         "root_domain_id": "root_domain",
         "sub_domain_id": "sub_domain"
     }
+    # 预加载引用数据
+    ref_data = {ref: set(db[ref].distinct("_id")) for ref in reference_fields.values()}
+
     collections_to_validate = db.list_collection_names()
     for collection_name in collections_to_validate:
         collection = db[collection_name]
+        ids_to_delete = []
         for field, ref_collection_name in reference_fields.items():
-            # 检查引用集合是否存在
-            if ref_collection_name not in collections_to_validate:
-                log(f"引用的集合 '{ref_collection_name}' 不存在，跳过验证。", is_positive=False)
+            if ref_collection_name not in ref_data:
                 continue
-            ref_collection = db[ref_collection_name]
-            documents = collection.find({field: {"$exists": True, "$ne": None}})
-            ids_to_delete = []
+            documents = collection.find({field: {"$exists": True, "$ne": None}}, {"_id": 1, field: 1})
             for document in documents:
                 ref_id = document[field]
-                # 尝试将引用字段的值转换为ObjectId，以匹配对应集合中的_id
+                # 尝试将引用字段的值转换为ObjectId
                 try:
                     ref_id = ObjectId(ref_id)
                 except:
-                    # 如果转换失败，记录该文档以便删除，因为无法匹配有效的ObjectId
                     ids_to_delete.append(document["_id"])
                     continue
-                # 检查引用的文档是否存在
-                if not ref_collection.find_one({"_id": ref_id}):
+                if ref_id not in ref_data[ref_collection_name]:
                     ids_to_delete.append(document["_id"])
-            # 删除引用不正确的文档
-            if ids_to_delete:
-                result = collection.delete_many({"_id": {"$in": ids_to_delete}})
-                deleted_count = result.deleted_count
-                total_deleted += deleted_count
-                log(f"集合 '{collection_name}': 删除了 {deleted_count} 个引用字段 '{field}' 不正确的文档。")
+        # 批量删除无效引用的文档
+        if ids_to_delete:
+            result = collection.delete_many({"_id": {"$in": ids_to_delete}})
+            deleted_count = result.deleted_count
+            total_deleted += deleted_count
+            log(f"集合 '{collection_name}': 删除了 {deleted_count} 个无效引用的文档。")
 
     end_time = datetime.now()
     elapsed_time = (end_time - start_time).total_seconds()
