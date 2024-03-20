@@ -1,6 +1,6 @@
 # 作者: soapffz
 # 创建时间: 2024年2月21日
-# 最后更新时间: 2024年2月22日
+# 最后更新时间: 2024年3月20日
 # 描述: 自动登录雷神众测平台，获取并更新token，统计进行中项目信息，自动加入项目并推送bark
 
 import os
@@ -14,6 +14,7 @@ import json
 import base64
 import time
 
+
 HOST = "pop.qq.com"
 USER = os.getenv("QQMAIL_MAIL")
 PASSWORD = os.getenv("QQMAIL_PASSWORD")
@@ -24,9 +25,133 @@ QL_CLIENT_SECRET = os.getenv("APP_BBDB_THOR_CLIENTSECERT")
 ENV_NAME = "BBDB_THOR_AUTHORIZATION"
 LOGIN_EMAIL = os.getenv("QQMAIL_MAIL")
 LOGIN_ENCRTPT_PASSWORD = os.getenv("BBDB_THOR_ENCRYPT_PASSWORD")
-YUNMA_TOKEN = os.getenv("YUNMA_TOKEN")
-YUNMA_BBDB_THOR_TYPECODE = os.getenv("YUNMA_BBDB_THOR_TYPECODE")
+OCR_API_SERVER_URL = os.getenv("OCR_API_SERVER_URL")
 
+
+def log_message(message, is_positive=True):
+    """打印日志信息"""
+    prefix = "[ + ]" if is_positive else "[ - ]"
+    print(f"{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')} {prefix} {message}")
+
+def check_environment_variables():
+    """检查所有必要的环境变量是否已设置"""
+    env_vars = [
+        "QQMAIL_MAIL", "QQMAIL_PASSWORD", "APP_BBDB_THOR_CLIENTID",
+        "APP_BBDB_THOR_CLIENTSECERT", "BBDB_THOR_AUTHORIZATION",
+        "BBDB_THOR_ENCRYPT_PASSWORD","OCR_API_SERVER_URL"
+    ]
+    missing_vars = [var for var in env_vars if not os.getenv(var)]
+    if missing_vars:
+        for var in missing_vars:
+            log_message(f"环境变量 {var} 未设置。", False)
+        return False
+    return True
+
+def check_ocr_api_server():
+    """检查OCR API服务器是否可访问"""
+    try:
+        response = requests.get(OCR_API_SERVER_URL)
+        if response.status_code == 200:
+            return True
+        else:
+            log_message("OCR API服务器无法访问，请检查。", False)
+            log_message("使用 docker run -p 9898:9898 --name ocr_api_server -d esme518/ocr_api_server:latest 搭建验证码服务再继续。", False)
+            return False
+    except requests.RequestException:
+        log_message("OCR API服务器无法访问，请检查。", False)
+        log_message("使用 docker run -p 9898:9898 --name ocr_api_server -d esme518/ocr_api_server:latest 搭建验证码服务再继续。", False)
+        return False
+
+def get_captcha_result(image_base64):
+    """
+    使用OCR API服务识别验证码。
+    """
+    if not OCR_API_SERVER_URL:
+        log_message("OCR_API_SERVER_URL环境变量未设置。", False)
+        return None
+
+    try:
+        # 发送base64编码的图片数据到OCR API
+        resp = requests.post(OCR_API_SERVER_URL, data=image_base64)
+        resp.raise_for_status()  # 确保HTTP请求成功
+
+        # 解析响应数据
+        result = resp.json()
+        if result.get("status") == 200:
+            captcha_text = result.get("result")
+            if captcha_text:
+                return captcha_text
+            else:
+                log_message("验证码识别失败，未返回文本。", False)
+                return None
+        else:
+            log_message(f"验证码识别失败，状态码：{result.get('status')}, 消息：{result.get('msg')}", False)
+            return None
+    except requests.RequestException as error:
+        log_message(f"请求OCR API服务失败: {error}", False)
+        return None
+
+
+def login_and_update_token():
+    """
+    登录并更新token环境变量。
+    """
+    # 获取验证码图片
+    captcha_response = requests.get("https://www.bountyteam.com/web/v1/imageCode")
+    captcha_data = captcha_response.json()
+    if captcha_data["errcode"] == 0:
+        image_base64 = captcha_data["ret"]["photo"].split(",")[-1]
+        captcha_code = captcha_data["ret"]["code"]
+        photoCode = get_captcha_result(image_base64)
+        if photoCode:
+            # 发送邮件验证码
+            email = USER
+            email_code_url = f"https://www.bountyteam.com/web/v1/portal/emailcode?email={email}&photoCode={photoCode}&code={captcha_code}"
+            email_code_response = requests.get(email_code_url)
+            email_code_data = email_code_response.json()
+            if email_code_data["errcode"] == 0:
+                log_message(
+                    f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 邮件验证码发送成功。"
+                )
+                # 获取邮件验证码
+                time.sleep(10)
+                email_verification_code = (
+                    fetch_verification_code()
+                )  # 假设这个函数能够获取到邮件中的验证码
+                # 登录操作
+                login_data = {
+                    "checkcode": email_verification_code,
+                    "password": LOGIN_ENCRTPT_PASSWORD,
+                    "email": email,
+                }
+                login_response = requests.post(
+                    "https://www.bountyteam.com/web/v1/portal/login", json=login_data
+                )
+                login_data = login_response.json()
+                if login_data["errcode"] == 0:
+                    token = login_data["ret"]["token"]
+                    # 更新环境变量
+                    if update_env_variable(token):  # 更新环境变量
+                        log_message(
+                            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 登录成功，token已更新。"
+                        )
+                        return token
+                else:
+                    log_message(
+                        f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 登录失败：",
+                        login_data["errmsg"],
+                    )
+            else:
+                print(
+                    f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 邮件验证码发送失败：",
+                    email_code_data["errmsg"],
+                )
+        else:
+            log_message("验证码识别失败。")
+    else:
+        log_message("获取验证码失败：",
+            captcha_data["errmsg"],
+        )
 
 def fetch_verification_code():
     """
@@ -79,100 +204,11 @@ def fetch_verification_code():
             return None
 
     except poplib.error_proto as e:
-        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 邮件服务器错误: {str(e)}")
+        log_message("邮件服务器错误: {str(e)}")
     except Exception as e:
-        print(
-            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 处理邮件时发生错误: {str(e)}"
+        log_message("处理邮件时发生错误: {str(e)}"
         )
         return None
-
-
-def get_captcha_result(image_base64, token, type_code):
-    """
-    向验证码识别服务发送请求，并返回识别结果。
-    """
-    data = {"token": token, "type": type_code, "image": image_base64}
-    headers = {"Content-Type": "application/json"}
-    url = "http://api.jfbym.com/api/YmServer/customApi"
-    try:
-        response = requests.post(url, json=data, headers=headers)
-        response.raise_for_status()  # 确保HTTP请求成功
-        return response.json()
-    except requests.RequestException as error:
-        print(
-            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 请求验证码识别服务失败: {error}"
-        )
-        return None
-
-
-def login_and_update_token(token, type_code):
-    """
-    登录并更新token环境变量。
-    """
-    # 获取验证码图片
-    captcha_response = requests.get("https://www.bountyteam.com/web/v1/imageCode")
-    captcha_data = captcha_response.json()
-    if captcha_data["errcode"] == 0:
-        image_base64 = captcha_data["ret"]["photo"].split(",")[-1]
-        captcha_code = captcha_data["ret"]["code"]
-        # 调用get_captcha_result时传入token和type_code
-        captcha_result = get_captcha_result(image_base64, token, type_code)
-        if (
-            captcha_result
-            and captcha_result["code"] == 10000
-            and "data" in captcha_result
-        ):
-            photoCode = captcha_result["data"]["data"]
-            # 发送邮件验证码
-            email = USER
-            email_code_url = f"https://www.bountyteam.com/web/v1/portal/emailcode?email={email}&photoCode={photoCode}&code={captcha_code}"
-            email_code_response = requests.get(email_code_url)
-            email_code_data = email_code_response.json()
-            if email_code_data["errcode"] == 0:
-                print(
-                    f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 邮件验证码发送成功。"
-                )
-                # 获取邮件验证码
-                time.sleep(10)
-                email_verification_code = (
-                    fetch_verification_code()
-                )  # 假设这个函数能够获取到邮件中的验证码
-                # 登录操作
-                login_data = {
-                    "checkcode": email_verification_code,
-                    "password": LOGIN_ENCRTPT_PASSWORD,
-                    "email": email,
-                }
-                login_response = requests.post(
-                    "https://www.bountyteam.com/web/v1/portal/login", json=login_data
-                )
-                login_data = login_response.json()
-                if login_data["errcode"] == 0:
-                    token = login_data["ret"]["token"]
-                    # 更新环境变量
-                    if update_env_variable(token):  # 更新环境变量
-                        print(
-                            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 登录成功，token已更新。"
-                        )
-                        return token
-                else:
-                    print(
-                        f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 登录失败：",
-                        login_data["errmsg"],
-                    )
-            else:
-                print(
-                    f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 邮件验证码发送失败：",
-                    email_code_data["errmsg"],
-                )
-        else:
-            print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 验证码识别失败。")
-    else:
-        print(
-            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 获取验证码失败：",
-            captcha_data["errmsg"],
-        )
-
 
 def access_project_list(token):
     """
@@ -185,7 +221,7 @@ def access_project_list(token):
     )
     project_list_data = response.json()
     if project_list_data["errcode"] == 0:
-        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 项目列表获取成功。")
+        log_message("项目列表获取成功。")
         projects = project_list_data.get("ret", {}).get("data", [])
         # 筛选出除了通用漏洞奖励计划外的项目
         non_common_vulnerability_projects = [
@@ -202,8 +238,7 @@ def access_project_list(token):
                 f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 没有找到符合条件的项目。"
             )
     else:
-        print(
-            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 访问项目列表失败：",
+        log_message("访问项目列表失败：",
             project_list_data["errmsg"],
         )
 
@@ -218,8 +253,7 @@ def get_qinglong_openapi_token():
         ql_token_data = response.json()
         return ql_token_data["data"]["token"]
     else:
-        print(
-            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 获取token失败，状态码：{response.status_code}，响应内容：{response.text}"
+        log_message("获取token失败，状态码：{response.status_code}，响应内容：{response.text}"
         )
         return None
 
@@ -240,8 +274,7 @@ def update_env_variable(env_value):
     get_envs_url = f"{QL_URL}/open/envs"
     response = requests.get(get_envs_url, headers=headers)
     if response.status_code != 200:
-        print(
-            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 获取环境变量失败，状态码：{response.status_code}，响应内容：{response.text}"
+        log_message("获取环境变量失败，状态码：{response.status_code}，响应内容：{response.text}"
         )
         return False
 
@@ -252,7 +285,7 @@ def update_env_variable(env_value):
             env_id = env.get("id")
             break
     if not env_id:
-        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 未找到环境变量 {ENV_NAME}")
+        log_message("未找到环境变量 {ENV_NAME}")
         return False
 
     # 更新指定的环境变量
@@ -265,13 +298,11 @@ def update_env_variable(env_value):
         f"{QL_URL}/open/envs", headers=headers, json=update_data
     )
     if update_response.status_code == 200:
-        print(
-            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 环境变量 {ENV_NAME} 更新成功。"
+        log_message("环境变量 {ENV_NAME} 更新成功。"
         )
         return True
     else:
-        print(
-            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 更新环境变量失败，状态码：{update_response.status_code}，响应内容：{update_response.text}"
+        log_message("更新环境变量失败，状态码：{update_response.status_code}，响应内容：{update_response.text}"
         )
         return False
 
@@ -282,8 +313,7 @@ def check_login_and_fetch_projects():
     """
     token = os.getenv(ENV_NAME)
     if not token:
-        print(
-            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 未找到环境变量中的Authorization token。"
+        log_message("未找到环境变量中的Authorization token。"
         )
         return False, []
 
@@ -302,8 +332,7 @@ def check_login_and_fetch_projects():
         ongoing_projects = [
             project for project in projects if project["states"] in ["doing", "apply"]
         ]
-        print(
-            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 当前已登录，并成功获取进行中和申请中的项目信息。"
+        log_message("当前已登录，并成功获取进行中和申请中的项目信息。"
         )
         return True, ongoing_projects
     elif response_data["errcode"] == 401:
@@ -317,8 +346,7 @@ def check_login_and_fetch_projects():
             )
         return False, []
     else:
-        print(
-            f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 访问失败，错误码：{response_data['errcode']}，错误消息：{response_data['errmsg']}"
+        log_message("访问失败，错误码：{response_data['errcode']}，错误消息：{response_data['errmsg']}"
         )
         return False, []
 
@@ -395,7 +423,7 @@ def access_project_list_and_compare(token, my_projects):
                 f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 没有找到符合条件的最新项目。"
             )
     else:
-        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 获取项目列表失败。")
+        log_message("获取项目列表失败。")
 
 
 def capture_project_status_info(ongoing_projects, token):
@@ -435,9 +463,9 @@ def bark_push(title, content):
     url = f"https://api.day.app/{bark_key}/{title}/{content}"
     response = requests.get(url)
     if response.status_code == 200:
-        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ + ] 推送成功")
+        log_message("推送成功")
     else:
-        print(f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 推送失败")
+        log_message("推送失败")
 
 
 def main():
@@ -446,7 +474,7 @@ def main():
     """
     is_logged_in, my_projects = check_login_and_fetch_projects()
     if not is_logged_in:
-        token = login_and_update_token(YUNMA_TOKEN, YUNMA_BBDB_THOR_TYPECODE)
+        token = login_and_update_token()
         if not token:
             print(
                 f"{time.strftime('%Y-%m-%d-%H-%M-%S')} [ - ] 登录操作失败，未能获取token。"
