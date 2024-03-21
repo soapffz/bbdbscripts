@@ -211,8 +211,8 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 13. 黑名单表(blacklist)
 
 - id：黑名单 ID，MongoDB 自动生成
-- type：黑名单类型，business/root_domain/sub_domain/url
-- name: 黑名单内容，子域名为sub_domain，站点为url，公司为company
+- type：黑名单类型，子域名为sub_domain，站点为url，公司为company
+- name: 黑名单内容，比如子域名名称
 - root_domain_id：关联的根域名 ID
 - business_id：关联的业务 ID
 - create_time：创建时间
