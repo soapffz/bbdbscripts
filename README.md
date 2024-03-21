@@ -142,8 +142,8 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 - wechatid：微信公众号 ID
 - business_id：关联的业务 ID
 - notes：备注，用于自定义描述
-- wechat_public_pic_url：微信公众号头像图片链接
-- avatar_pic_url：头像图片链接
+- wechat_public_pic_url：微信公众号二维码图片链接
+- avatar_pic_url：微信公众号头图链接
 - create_time：创建时间
 - update_time：修改时间
 
