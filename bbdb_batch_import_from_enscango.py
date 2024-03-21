@@ -9,14 +9,18 @@
 import os
 import pandas as pd
 import re
-import yaml
 from pymongo import MongoClient, UpdateOne, InsertOne
 from bson import ObjectId
 from datetime import datetime
+import re
 
-# 读取配置文件
-with open("config_product.yaml", "r") as f:
-    config = yaml.safe_load(f)
+
+def is_ipv4(address):
+    """
+    检查给定的字符串是否为有效的IPv4地址。
+    """
+    pattern = r"^(\d{1,3}\.){3}\d{1,3}$"
+    return re.match(pattern, address) is not None
 
 
 def read_excel_sheet(xlsx_file_name, sheet_name):
@@ -149,7 +153,9 @@ def process_data(db, xlsx_file_name, business_name):
     for _, row in df_icp.iterrows():
         if "域名" not in row or pd.isnull(row["域名"]):
             continue
-        domain_name = row["域名"]
+        domain_name = row.get("域名")
+        if pd.isnull(domain_name) or is_ipv4(domain_name):
+            continue  # 如果是IPv4地址，则跳过
         existing_domain = db["root_domain"].find_one({"name": domain_name})
         if existing_domain is None:
             company = row.get("公司名称")
@@ -200,7 +206,7 @@ def process_data(db, xlsx_file_name, business_name):
 
 if __name__ == "__main__":
     # 连接MongoDB
-    mongodb_uri = config["DEFAULT"].get("BBDB_MONGODB_URI")
+    mongodb_uri = "mongodb://192.168.2.188:27017/"
     try:
         client = MongoClient(mongodb_uri)
         db = client["bbdb"]
@@ -210,7 +216,7 @@ if __name__ == "__main__":
 
     # 传入xlsx文件名称和对应的business_name
     xlsx_file_name = (
-        "outs/浙江永康农村商业银行股份有限公司--2024-03-21--1711028036.xlsx"
+        "outs/浙江永康农村商业银行股份有限公司--2024-03-21--1711028041.xlsx"
     )
     business_name = "国内-雷神众测-永康农商银行"
 
