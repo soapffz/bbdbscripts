@@ -76,6 +76,11 @@ def process_data(db, xlsx_file_name, business_name):
         ):
             continue
         company_name = row["企业名称"]
+
+        # 检查business文档中是否存在company字段，如果不存在或为空，则初始化为一个空列表
+        if "company" not in business or not business["company"]:
+            business["company"] = []
+
         if company_name not in business["company"]:
             new_companies.append(company_name)
 
@@ -218,8 +223,8 @@ if __name__ == "__main__":
         exit(1)
 
     # 传入xlsx文件名称和对应的business_name
-    xlsx_file_name = "outs/中国光大银行股份有限公司--2024-03-21--1711028150.xlsx"
-    business_name = "国内-雷神众测-光大银行"
+    xlsx_file_name = "outs/泰隆银行--2024-03-21--1711032014.xlsx"
+    business_name = "国内-雷神众测-泰隆银行"
 
     # 处理数据并插入到数据库
     process_data(db, xlsx_file_name, business_name)
