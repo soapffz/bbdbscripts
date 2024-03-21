@@ -184,6 +184,9 @@ def process_data(db, xlsx_file_name, business_name):
         notes = row.get("简介")
         if pd.isnull(notes) or notes == "":
             notes = "set by soapffz manually"
+        typec = row.get("分类")
+        if pd.isnull(typec) or typec == "":
+            typec = "set by soapffz manually"
         operation = UpdateOne(
             {"name": row["软件名称"]},
             {
@@ -191,7 +194,7 @@ def process_data(db, xlsx_file_name, business_name):
                     "name": row["软件名称"],
                     "notes": notes,
                     "regnumber": row.get("登记号"),
-                    "type": row.get("分类"),
+                    "type": typec,
                     "business_id": business_id,
                     "create_time": datetime.now(),
                 },
@@ -215,10 +218,8 @@ if __name__ == "__main__":
         exit(1)
 
     # 传入xlsx文件名称和对应的business_name
-    xlsx_file_name = (
-        "outs/浙江永康农村商业银行股份有限公司--2024-03-21--1711028041.xlsx"
-    )
-    business_name = "国内-雷神众测-永康农商银行"
+    xlsx_file_name = "outs/中国光大银行股份有限公司--2024-03-21--1711028150.xlsx"
+    business_name = "国内-雷神众测-光大银行"
 
     # 处理数据并插入到数据库
     process_data(db, xlsx_file_name, business_name)
