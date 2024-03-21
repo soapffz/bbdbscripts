@@ -2,6 +2,11 @@
 new Env('bbdb-ARL联动');
 */10 * * * * https://raw.githubusercontent.com/soapffz/bbdbscripts//main/bbdb_arl.py
 
+文件名: bbdb_arl.py
+作者: soapffz
+创建日期: 2023年10月1日
+最后修改日期: 2024年3月21日
+
 本脚本实现了bbdb和ARL之间的联动，主要包括以下步骤：
 
 1. 从bbdb全量读取"国内-"开头的business，root_domain,sub_domain数据，并登录ARL获取token。
@@ -22,32 +27,34 @@ import json
 import sys
 import urllib3
 import re
-from datetime import datetime
-import requests
-import json
-import logging
-import yaml
-
-logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-)
+from datetime import datetime, timezone, timedelta
+import os
+from bson.objectid import ObjectId
 
 urllib3.disable_warnings()
 
 
-def check_env_vars(config):
+def log_message(message, is_positive=True):
+    """打印日志信息"""
+    prefix = "[ + ]" if is_positive else "[ - ]"
+    print(
+        f"{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')} {prefix} {message}"
+    )
+
+
+def check_env_vars():
     # 定义所有需要的环境变量
     required_env_vars = [
         "BBDB_ARL_URL",
         "BBDB_ARL_USERNAME",
         "BBDB_ARL_PASSWORD",
-        "BBDB_MONGODB_URI",
+        "BBDB_MONGOURI",
     ]
 
     # 检查每个环境变量
     for var in required_env_vars:
-        if not config["DEFAULT"].get(var):
-            print(f"环境变量 {var} 无效。请检查你的环境变量设置。")
+        if var not in os.environ or not os.environ[var]:
+            log_message(f"环境变量 {var} 无效。请检查你的环境变量设置。", False)
             return False
 
     # 如果所有环境变量都有效，返回 True
@@ -55,9 +62,13 @@ def check_env_vars(config):
 
 
 # 登录ARL
-def login_arl(arl_url, username, password):
+def login_arl():
+    arl_url = os.environ.get("BBDB_ARL_URL")
+    username = os.environ.get("BBDB_ARL_USERNAME")
+    password = os.environ.get("BBDB_ARL_PASSWORD")
+
     if not all([arl_url, username, password]):
-        logging.error("ARL URL, username or password is missing.")
+        log_message("ARL URL, username or password is missing.", False)
         return None
 
     data = {"username": username, "password": password}
@@ -69,46 +80,50 @@ def login_arl(arl_url, username, password):
         )
         response.raise_for_status()
     except requests.RequestException as e:
-        logging.error(f"Request failed: {e}")
+        log_message(f"Request failed: {e}", False)
         return None
 
     try:
         response_data = response.json()
     except ValueError:
-        logging.error("Failed to decode JSON response.")
+        log_message("Failed to decode JSON response.", False)
         return None
 
     if response_data.get("code") != 200:
-        logging.error(f"ARL login failed, error code: {response_data.get('code')}")
+        log_message(f"ARL login failed, error code: {response_data.get('code')}", False)
         return None
 
     token = response_data.get("data", {}).get("token")
     if not token:
-        logging.error("Token is missing in the response.")
+        log_message("Token is missing in the response.", False)
         return None
 
-    print("ARL login successful.")
+    log_message("ARL login successful.")
     return token
 
 
-def get_bbdb_data(db):
+def get_bbdb_data(db, name_keyword):
     # 从数据库中获取所有的数据
-    all_businesses = list(db["business"].find())
-    all_root_domains = list(db["root_domain"].find())
-    all_sub_domains = list(db["sub_domain"].find())
+    # 获取 business 数据
+    businesses = list(db.business.find({"name": {"$regex": name_keyword}}))
+    # 将 business 的 _id 转换为字符串类型，以便与其他表中的 business_id 进行匹配
+    business_ids = [str(business["_id"]) for business in businesses]
 
-    # 在内存中过滤出以 "国内-" 开头的数据
-    businesses = [
-        business for business in all_businesses if business["name"].startswith("国内-")
-    ]
+    # 一次性获取所有 root_domain 和 sub_domain 数据
+    all_root_domains = list(db.root_domain.find())
+    all_sub_domains = list(db.sub_domain.find())
 
-    # 根据business_id筛选对应的root_domain和sub_domain
-    business_ids = [business["_id"] for business in businesses]
+    # 在内存中过滤出对应的 root_domain 和 sub_domain 数据
+    # 注意这里假设 root_domain 和 sub_domain 表中的 business_id 已经是字符串类型
     root_domains = [
-        domain for domain in all_root_domains if domain["business_id"] in business_ids
+        domain
+        for domain in all_root_domains
+        if str(domain["business_id"]) in business_ids
     ]
     sub_domains = [
-        domain for domain in all_sub_domains if domain["business_id"] in business_ids
+        domain
+        for domain in all_sub_domains
+        if str(domain["business_id"]) in business_ids
     ]
 
     return businesses, root_domains, sub_domains
@@ -131,7 +146,7 @@ def insert_new_group_to_arl(
     for business_name in business_only_asset_scopes:
         # 检查资产分组是否已经存在
         if business_name in arl_asset_scope_names:
-            # print(f"资产分组 {business_name} 已经存在，跳过插入")
+            # log_message(资产分组 {business_name} 已经存在，跳过插入")
             continue
         # 获取对应的 business_id
         business_id = next(
@@ -142,20 +157,21 @@ def insert_new_group_to_arl(
             ),
             None,
         )
+
         if not business_id:
-            print(f"无法找到业务 {business_name} 的 ID")
+            log_message(f"无法找到业务 {business_name} 的 ID")
             continue
 
         # 获取对应的根域名和子域名
         rootdomain_names = [
             domain["name"]
             for domain in root_domains
-            if domain["business_id"] == business_id
+            if ObjectId(domain["business_id"]) == business_id
         ]
         subdomain_names = [
             domain["name"]
             for domain in sub_domains
-            if domain["business_id"] == business_id
+            if ObjectId(domain["business_id"]) == business_id
         ]
 
         # 合并去重，保持原有顺序，根域名在先
@@ -174,38 +190,44 @@ def add_asset_scope(token, arl_url, name, scope):
 
     # 检查资产分组是否已经存在
     if name in arl_asset_scope_names:
-        # print(f"资产分组 {name} 已经存在，跳过添加")
+        # log_message(资产分组 {name} 已经存在，跳过添加")
         return
 
-    # 准备请求数据
-    data = {"scope_type": "domain", "name": name, "scope": scope}
-    headers = {"Token": token, "Content-Type": "application/json; charset=UTF-8"}
+    scope_domains = scope.split(',')
+    while scope_domains:
+        data = {"scope_type": "domain", "name": name, "scope": ",".join(scope_domains)}
+        headers = {"Token": token, "Content-Type": "application/json; charset=UTF-8"}
 
-    # 发送请求
-    try:
-        response = requests.post(
-            arl_url + "/api/asset_scope/", headers=headers, json=data, verify=False
-        )
-        response.raise_for_status()
-    except requests.RequestException as e:
-        print(e, "出错了，请排查")
-        return None
+        # 发送请求
+        try:
+            response = requests.post(
+                arl_url + "/api/asset_scope/", headers=headers, json=data, verify=False
+            )
+            response.raise_for_status()
+        except requests.RequestException as e:
+            print(e, "出错了，请排查")
+            return None
 
-    # 解析响应内容
-    try:
-        response_data = response.json()
-    except ValueError:
-        print("无法解析" + name + "响应内容")
-        return None
+        # 解析响应内容
+        try:
+            response_data = response.json()
+        except ValueError:
+            log_message(f"无法解析 {name} 响应内容")
+            return None
 
-    if response_data:
-        scope_id = response_data.get("data", {}).get("scope_id")
-        if not scope_id:
-            print("{name} 返回scope_id为空")
-            exit(-1)
-    else:
-        print("无法解析" + name + "响应内容")
+        if response_data.get("code") == 200:
+            break  # 插入成功,跳出循环
+        else:
+            invalid_domain = response_data.get("data", {}).get("scope")
+            if invalid_domain:
+                log_message(f"无效域名: {invalid_domain}, 将被移除")
+                scope_domains.remove(invalid_domain)
+            else:
+                log_message(f"未知错误: {response_data.get('message')}")
+                return None
 
+    if not scope_domains:
+        log_message(f"{name} 所有域名都是无效的,跳过插入")
 
 def fetch_arl_asset_scope_names(token, arl_url):
     asset_scopes = retrieve_all_arl_asset_scopes(token, arl_url)
@@ -229,10 +251,10 @@ def retrieve_all_arl_asset_scopes(token, arl_url):
             response.raise_for_status()
             response_data = response.json()
         except requests.RequestException as e:
-            logging.error(f"Request failed: {e}")
+            log_message(f"Request failed: {e}")
             break
         except ValueError:
-            logging.error("Failed to decode JSON response.")
+            log_message("Failed to decode JSON response.")
             break
 
         if total_pages is None:
@@ -242,7 +264,7 @@ def retrieve_all_arl_asset_scopes(token, arl_url):
         if "items" in response_data:
             all_asset_scopes.extend(response_data["items"])
         else:
-            print("响应中没有 'items' 键")
+            log_message("响应中没有 'items' 键")
             break
 
         page += 1  # 请求下一页
@@ -262,7 +284,7 @@ def insert_new_group_to_bbdb(db, arl_only_asset_scopes, arl_all_asset_scopes):
             None,
         )
         if asset_scope is None:
-            print(f"无法找到资产分组 {arl_name}")
+            log_message(f"无法找到资产分组 {arl_name}")
             continue
 
         # 检查 business 是否已存在
@@ -369,9 +391,10 @@ def insert_new_group_to_bbdb(db, arl_only_asset_scopes, arl_all_asset_scopes):
 def add_policy(arl_url, token, policy_name, scope_id):
     # 获取所有的策略
     arl_all_policies = get_arl_all_policies(arl_url, token)
+    
     # 检查策略是否已经存在
     if any(policy["name"] == policy_name for policy in arl_all_policies):
-        print(f"策略 {policy_name} 已经存在，跳过添加")
+        # log_message(f"策略 {policy_name} 已经存在，跳过添加")
         return
 
     # 准备请求参数
@@ -384,31 +407,222 @@ def add_policy(arl_url, token, policy_name, scope_id):
                 "alt_dns": True,
                 "arl_search": True,
                 "dns_query_plugin": True,
-                "skip_scan_cdn_ip": True,
                 "domain_brute_type": "big",
             },
             "ip_config": {
                 "port_scan": True,
-                "service_detection": False,
-                "os_detection": False,
-                "ssl_cert": False,
-                "port_scan_type": "all",
+                "service_detection": True,
+                "os_detection": True,
+                "ssl_cert": True,
+                "skip_scan_cdn_ip": True,
+                "port_scan_type": "top1000",
                 "port_custom": "",
                 "host_timeout_type": "default",
                 "host_timeout": 0,
-                "port_parallelism": 32,
-                "port_min_rate": 60,
+                "port_parallelism": 16,
+                "port_min_rate": 30,
             },
-            "npoc_service_detection": False,
+            "npoc_service_detection": True,
             "site_config": {
-                "site_identify": False,
-                "search_engines": False,
-                "site_spider": False,
+                "site_identify": True,
+                "search_engines": True,
+                "site_spider": True,
                 "site_capture": False,
-                "nuclei_scan": False,
+                "nuclei_scan": True,
+                "web_info_hunter": True,
             },
             "file_leak": True,
             "poc_config": [
+                {
+                    "plugin_name": "Onlyoffice_noauth",
+                    "vul_name": "Onlyoffice 未授权漏洞",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Solr_noauth",
+                    "vul_name": "Apache solr 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Actuator_noauth_bypass_waf",
+                    "vul_name": "Actuator API 未授权访问 (绕过WAF)",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Redis_noauth",
+                    "vul_name": "Redis 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Actuator_noauth",
+                    "vul_name": "Actuator API 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Memcached_noauth",
+                    "vul_name": "Memcached 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Actuator_httptrace_noauth",
+                    "vul_name": "Actuator httptrace API 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Elasticsearch_noauth",
+                    "vul_name": "Elasticsearch 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Headless_remote_API_noauth",
+                    "vul_name": "Headless Remote API 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "ZooKeeper_noauth",
+                    "vul_name": "ZooKeeper 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Druid_noauth",
+                    "vul_name": "Druid 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Mongodb_noauth",
+                    "vul_name": "Mongodb 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Apollo_Adminservice_noauth",
+                    "vul_name": "apollo-adminservice 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "DockerRemoteAPI_noauth",
+                    "vul_name": "Docker Remote API 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Nacos_noauth",
+                    "vul_name": "Nacos 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Hadoop_YARN_RPC_noauth",
+                    "vul_name": "Hadoop YARN RCP 未授权访问漏洞",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Kibana_noauth",
+                    "vul_name": "Kibana 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "FinereportV10_Identify",
+                    "vul_name": "发现帆软 FineReport V10",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Nacos_Identify",
+                    "vul_name": "发现 Nacos",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Oracle_Weblogic_Console_Identify",
+                    "vul_name": "发现 Oracle Weblogic 控制台",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Clickhouse_REST_API_Identify",
+                    "vul_name": "发现 Clickhouse REST API",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Graphql_Identify",
+                    "vul_name": "发现 Graphql 接口",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Weaver_Ecology_Identify",
+                    "vul_name": "发现泛微 Ecology",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "XXL_Job_Admin_Identify",
+                    "vul_name": "发现 xxl-job-admin",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "vcenter_identify",
+                    "vul_name": "发现VMware vCenter",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Any800_Identify",
+                    "vul_name": "发现 Any800全渠道智能客服云平台",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Hystrix_Dashboard_Identify",
+                    "vul_name": "发现 Hystrix Dashboard",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Adminer_PHP_Identify",
+                    "vul_name": "发现 Adminer.php",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Harbor_Identify",
+                    "vul_name": "发现 Harbor API",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Apache_Apereo_CAS_Identify",
+                    "vul_name": "发现 Apache Apereo Cas",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Swagger_Json_Identify",
+                    "vul_name": "发现 Swagger 文档接口",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Shiro_Identify",
+                    "vul_name": "发现 Apache Shiro",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Grafana_Identify",
+                    "vul_name": "发现 Grafana",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Finereport_Identify",
+                    "vul_name": "发现帆软 FineReport",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Apache_Ofbiz_Identify",
+                    "vul_name": "发现 Apache Ofbiz",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Django_Debug_Info",
+                    "vul_name": "Django 开启调试模式",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Gitlab_Username_Leak",
+                    "vul_name": "Gitlab 用户名泄漏",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Ueditor_SSRF",
+                    "vul_name": "Ueditor SSRF 漏洞",
+                    "enable": True,
+                },
                 {
                     "plugin_name": "WEB_INF_WEB_xml_leak",
                     "vul_name": "WEB-INF/web.xml 文件泄漏",
@@ -420,23 +634,8 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Ueditor_SSRF",
-                    "vul_name": "Ueditor SSRF 漏洞",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Gitlab_Username_Leak",
-                    "vul_name": "Gitlab 用户名泄漏",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Django_Debug_Info",
-                    "vul_name": "Django 开启调试模式",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "ZooKeeper_noauth",
-                    "vul_name": "ZooKeeper 未授权访问",
+                    "plugin_name": "Onlyoffice_noauth",
+                    "vul_name": "Onlyoffice 未授权漏洞",
                     "enable": True,
                 },
                 {
@@ -445,68 +644,13 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Redis_noauth",
-                    "vul_name": "Redis 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Onlyoffice_noauth",
-                    "vul_name": "Onlyoffice 未授权漏洞",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Nacos_noauth",
-                    "vul_name": "Nacos 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Mongodb_noauth",
-                    "vul_name": "Mongodb 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Memcached_noauth",
-                    "vul_name": "Memcached 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Kibana_noauth",
-                    "vul_name": "Kibana 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Headless_remote_API_noauth",
-                    "vul_name": "Headless Remote API 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Hadoop_YARN_RPC_noauth",
-                    "vul_name": "Hadoop YARN RCP 未授权访问漏洞",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Elasticsearch_noauth",
-                    "vul_name": "Elasticsearch 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Druid_noauth",
-                    "vul_name": "Druid 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "DockerRemoteAPI_noauth",
-                    "vul_name": "Docker Remote API 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Apollo_Adminservice_noauth",
-                    "vul_name": "apollo-adminservice 未授权访问",
-                    "enable": True,
-                },
-                {
                     "plugin_name": "Actuator_noauth_bypass_waf",
                     "vul_name": "Actuator API 未授权访问 (绕过WAF)",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Redis_noauth",
+                    "vul_name": "Redis 未授权访问",
                     "enable": True,
                 },
                 {
@@ -515,154 +659,407 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
+                    "plugin_name": "Memcached_noauth",
+                    "vul_name": "Memcached 未授权访问",
+                    "enable": True,
+                },
+                {
                     "plugin_name": "Actuator_httptrace_noauth",
                     "vul_name": "Actuator httptrace API 未授权访问",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "vcenter_identify",
-                    "vul_name": "VMware vCenter",
+                    "plugin_name": "Elasticsearch_noauth",
+                    "vul_name": "Elasticsearch 未授权访问",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "XXL_Job_Admin_Identify",
-                    "vul_name": "xxl-job-admin",
+                    "plugin_name": "Headless_remote_API_noauth",
+                    "vul_name": "Headless Remote API 未授权访问",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Weaver_Ecology_Identify",
-                    "vul_name": "Ecology",
+                    "plugin_name": "ZooKeeper_noauth",
+                    "vul_name": "ZooKeeper 未授权访问",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Swagger_Json_Identify",
-                    "vul_name": "Swagger 文档接口",
+                    "plugin_name": "Druid_noauth",
+                    "vul_name": "Druid 未授权访问",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Shiro_Identify",
-                    "vul_name": "Apache Shiro",
+                    "plugin_name": "Mongodb_noauth",
+                    "vul_name": "Mongodb 未授权访问",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Oracle_Weblogic_Console_Identify",
-                    "vul_name": "Oracle Weblogic 控制台",
-                    "enable": True,
-                },
-                {"plugin_name": "Nacos_Identify", "vul_name": "Nacos", "enable": True},
-                {
-                    "plugin_name": "Hystrix_Dashboard_Identify",
-                    "vul_name": "Hystrix Dashboard",
+                    "plugin_name": "Apollo_Adminservice_noauth",
+                    "vul_name": "apollo-adminservice 未授权访问",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Harbor_Identify",
-                    "vul_name": "Harbor API",
+                    "plugin_name": "DockerRemoteAPI_noauth",
+                    "vul_name": "Docker Remote API 未授权访问",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Graphql_Identify",
-                    "vul_name": "Graphql 接口",
+                    "plugin_name": "Nacos_noauth",
+                    "vul_name": "Nacos 未授权访问",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Grafana_Identify",
-                    "vul_name": "Grafana",
+                    "plugin_name": "Hadoop_YARN_RPC_noauth",
+                    "vul_name": "Hadoop YARN RCP 未授权访问漏洞",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Finereport_Identify",
-                    "vul_name": "帆软 FineReport",
+                    "plugin_name": "Kibana_noauth",
+                    "vul_name": "Kibana 未授权访问",
                     "enable": True,
                 },
                 {
                     "plugin_name": "FinereportV10_Identify",
-                    "vul_name": "帆软 FineReport V10",
+                    "vul_name": "发现帆软 FineReport V10",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Nacos_Identify",
+                    "vul_name": "发现 Nacos",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Oracle_Weblogic_Console_Identify",
+                    "vul_name": "发现 Oracle Weblogic 控制台",
                     "enable": True,
                 },
                 {
                     "plugin_name": "Clickhouse_REST_API_Identify",
-                    "vul_name": "Clickhouse REST API",
+                    "vul_name": "发现 Clickhouse REST API",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Apache_Ofbiz_Identify",
-                    "vul_name": "Apache Ofbiz",
+                    "plugin_name": "Graphql_Identify",
+                    "vul_name": "发现 Graphql 接口",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Apache_Apereo_CAS_Identify",
-                    "vul_name": "Apache Apereo Cas",
+                    "plugin_name": "Weaver_Ecology_Identify",
+                    "vul_name": "发现泛微 Ecology",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "XXL_Job_Admin_Identify",
+                    "vul_name": "发现 xxl-job-admin",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "vcenter_identify",
+                    "vul_name": "发现VMware vCenter",
                     "enable": True,
                 },
                 {
                     "plugin_name": "Any800_Identify",
-                    "vul_name": "Any800全渠道智能客服云平台",
+                    "vul_name": "发现 Any800全渠道智能客服云平台",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Hystrix_Dashboard_Identify",
+                    "vul_name": "发现 Hystrix Dashboard",
                     "enable": True,
                 },
                 {
                     "plugin_name": "Adminer_PHP_Identify",
-                    "vul_name": "Adminer.php",
+                    "vul_name": "发现 Adminer.php",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Harbor_Identify",
+                    "vul_name": "发现 Harbor API",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Apache_Apereo_CAS_Identify",
+                    "vul_name": "发现 Apache Apereo Cas",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Swagger_Json_Identify",
+                    "vul_name": "发现 Swagger 文档接口",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Shiro_Identify",
+                    "vul_name": "发现 Apache Shiro",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Grafana_Identify",
+                    "vul_name": "发现 Grafana",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Finereport_Identify",
+                    "vul_name": "发现帆软 FineReport",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Apache_Ofbiz_Identify",
+                    "vul_name": "发现 Apache Ofbiz",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Django_Debug_Info",
+                    "vul_name": "Django 开启调试模式",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Gitlab_Username_Leak",
+                    "vul_name": "Gitlab 用户名泄漏",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Ueditor_SSRF",
+                    "vul_name": "Ueditor SSRF 漏洞",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "WEB_INF_WEB_xml_leak",
+                    "vul_name": "WEB-INF/web.xml 文件泄漏",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Ueditor_Store_XSS",
+                    "vul_name": "Ueditor 存储 XSS 漏洞",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Onlyoffice_noauth",
+                    "vul_name": "Onlyoffice 未授权漏洞",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Solr_noauth",
+                    "vul_name": "Apache solr 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Actuator_noauth_bypass_waf",
+                    "vul_name": "Actuator API 未授权访问 (绕过WAF)",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Redis_noauth",
+                    "vul_name": "Redis 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Actuator_noauth",
+                    "vul_name": "Actuator API 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Memcached_noauth",
+                    "vul_name": "Memcached 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Actuator_httptrace_noauth",
+                    "vul_name": "Actuator httptrace API 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Elasticsearch_noauth",
+                    "vul_name": "Elasticsearch 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Headless_remote_API_noauth",
+                    "vul_name": "Headless Remote API 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "ZooKeeper_noauth",
+                    "vul_name": "ZooKeeper 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Druid_noauth",
+                    "vul_name": "Druid 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Mongodb_noauth",
+                    "vul_name": "Mongodb 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Apollo_Adminservice_noauth",
+                    "vul_name": "apollo-adminservice 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "DockerRemoteAPI_noauth",
+                    "vul_name": "Docker Remote API 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Nacos_noauth",
+                    "vul_name": "Nacos 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Hadoop_YARN_RPC_noauth",
+                    "vul_name": "Hadoop YARN RCP 未授权访问漏洞",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Kibana_noauth",
+                    "vul_name": "Kibana 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "FinereportV10_Identify",
+                    "vul_name": "发现帆软 FineReport V10",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Nacos_Identify",
+                    "vul_name": "发现 Nacos",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Oracle_Weblogic_Console_Identify",
+                    "vul_name": "发现 Oracle Weblogic 控制台",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Clickhouse_REST_API_Identify",
+                    "vul_name": "发现 Clickhouse REST API",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Graphql_Identify",
+                    "vul_name": "发现 Graphql 接口",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Weaver_Ecology_Identify",
+                    "vul_name": "发现泛微 Ecology",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "XXL_Job_Admin_Identify",
+                    "vul_name": "发现 xxl-job-admin",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "vcenter_identify",
+                    "vul_name": "发现VMware vCenter",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Any800_Identify",
+                    "vul_name": "发现 Any800全渠道智能客服云平台",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Hystrix_Dashboard_Identify",
+                    "vul_name": "发现 Hystrix Dashboard",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Adminer_PHP_Identify",
+                    "vul_name": "发现 Adminer.php",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Harbor_Identify",
+                    "vul_name": "发现 Harbor API",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Apache_Apereo_CAS_Identify",
+                    "vul_name": "发现 Apache Apereo Cas",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Swagger_Json_Identify",
+                    "vul_name": "发现 Swagger 文档接口",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Shiro_Identify",
+                    "vul_name": "发现 Apache Shiro",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Grafana_Identify",
+                    "vul_name": "发现 Grafana",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Finereport_Identify",
+                    "vul_name": "发现帆软 FineReport",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Apache_Ofbiz_Identify",
+                    "vul_name": "发现 Apache Ofbiz",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Django_Debug_Info",
+                    "vul_name": "Django 开启调试模式",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Gitlab_Username_Leak",
+                    "vul_name": "Gitlab 用户名泄漏",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Ueditor_SSRF",
+                    "vul_name": "Ueditor SSRF 漏洞",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "WEB_INF_WEB_xml_leak",
+                    "vul_name": "WEB-INF/web.xml 文件泄漏",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Ueditor_Store_XSS",
+                    "vul_name": "Ueditor 存储 XSS 漏洞",
                     "enable": True,
                 },
             ],
             "brute_config": [
-                {
-                    "plugin_name": "TomcatBrute",
-                    "vul_name": "Tomcat 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Shiro_GCM_Brute",
-                    "vul_name": "Shiro GCM 弱密钥",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Shiro_CBC_Brute",
-                    "vul_name": "Shiro CBC 弱密钥",
-                    "enable": True,
-                },
-                {"plugin_name": "SSHBrute", "vul_name": "SSH 弱口令", "enable": True},
-                {
-                    "plugin_name": "SQLServerBrute",
-                    "vul_name": "SQLServer 弱口令",
-                    "enable": True,
-                },
-                {"plugin_name": "SMTPBrute", "vul_name": "SMTP 弱口令", "enable": True},
-                {"plugin_name": "RedisBrute", "vul_name": "Redis 弱口令", "enable": True},
-                {"plugin_name": "RDPBrute", "vul_name": "RDP 弱口令", "enable": True},
-                {
-                    "plugin_name": "PostgreSQLBrute",
-                    "vul_name": "PostgreSQL 弱口令",
-                    "enable": True,
-                },
-                {"plugin_name": "POP3Brute", "vul_name": "POP3 弱口令", "enable": True},
-                {
-                    "plugin_name": "OpenfireBrute",
-                    "vul_name": "Openfire 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "NexusBrute",
-                    "vul_name": "Nexus Repository 弱口令",
-                    "enable": True,
-                },
-                {"plugin_name": "NacosBrute", "vul_name": "Nacos 弱口令", "enable": True},
-                {"plugin_name": "MysqlBrute", "vul_name": "MySQL 弱口令", "enable": True},
                 {
                     "plugin_name": "MongoDBBrute",
                     "vul_name": "MongoDB 弱口令",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "JenkinsBrute",
-                    "vul_name": "Jenkins 弱口令",
+                    "plugin_name": "OpenfireBrute",
+                    "vul_name": "Openfire 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "ExchangeBrute",
+                    "vul_name": "Exchange 邮件服务器弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "ActiveMQBrute",
+                    "vul_name": "ActiveMQ 弱口令",
                     "enable": True,
                 },
                 {"plugin_name": "IMAPBrute", "vul_name": "IMAP 弱口令", "enable": True},
+                {"plugin_name": "RDPBrute", "vul_name": "RDP 弱口令", "enable": True},
                 {
-                    "plugin_name": "HarborBrute",
-                    "vul_name": "Harbor 弱口令",
+                    "plugin_name": "GitlabBrute",
+                    "vul_name": "Gitlab 弱口令",
                     "enable": True,
                 },
                 {
@@ -671,19 +1068,24 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
-                    "plugin_name": "GitlabBrute",
-                    "vul_name": "Gitlab 弱口令",
-                    "enable": True,
-                },
-                {"plugin_name": "FTPBrute", "vul_name": "FTP 弱口令", "enable": True},
-                {
-                    "plugin_name": "ExchangeBrute",
-                    "vul_name": "Exchange 邮件服务器弱口令",
+                    "plugin_name": "NexusBrute",
+                    "vul_name": "Nexus Repository 弱口令",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "CobaltStrikeBrute",
-                    "vul_name": "CobaltStrike 弱口令",
+                    "plugin_name": "RedisBrute",
+                    "vul_name": "Redis 弱口令",
+                    "enable": True,
+                },
+                {"plugin_name": "SSHBrute", "vul_name": "SSH 弱口令", "enable": True},
+                {
+                    "plugin_name": "HarborBrute",
+                    "vul_name": "Harbor 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Shiro_GCM_Brute",
+                    "vul_name": "Shiro GCM 弱密钥",
                     "enable": True,
                 },
                 {
@@ -692,8 +1094,71 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
+                    "plugin_name": "TomcatBrute",
+                    "vul_name": "Tomcat 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "SQLServerBrute",
+                    "vul_name": "SQLServer 弱口令",
+                    "enable": True,
+                },
+                {"plugin_name": "POP3Brute", "vul_name": "POP3 弱口令", "enable": True},
+                {
                     "plugin_name": "AlibabaDruidBrute",
                     "vul_name": "Alibaba Druid 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "PostgreSQLBrute",
+                    "vul_name": "PostgreSQL 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "APISIXBrute",
+                    "vul_name": "APISIX 弱口令",
+                    "enable": True,
+                },
+                {"plugin_name": "FTPBrute", "vul_name": "FTP 弱口令", "enable": True},
+                {
+                    "plugin_name": "JenkinsBrute",
+                    "vul_name": "Jenkins 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Shiro_CBC_Brute",
+                    "vul_name": "Shiro CBC 弱密钥",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "NacosBrute",
+                    "vul_name": "Nacos 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "CobaltStrikeBrute",
+                    "vul_name": "CobaltStrike 弱口令",
+                    "enable": True,
+                },
+                {"plugin_name": "SMTPBrute", "vul_name": "SMTP 弱口令", "enable": True},
+                {
+                    "plugin_name": "MysqlBrute",
+                    "vul_name": "MySQL 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "MongoDBBrute",
+                    "vul_name": "MongoDB 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "OpenfireBrute",
+                    "vul_name": "Openfire 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "ExchangeBrute",
+                    "vul_name": "Exchange 邮件服务器弱口令",
                     "enable": True,
                 },
                 {
@@ -701,9 +1166,206 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "vul_name": "ActiveMQ 弱口令",
                     "enable": True,
                 },
+                {"plugin_name": "IMAPBrute", "vul_name": "IMAP 弱口令", "enable": True},
+                {"plugin_name": "RDPBrute", "vul_name": "RDP 弱口令", "enable": True},
+                {
+                    "plugin_name": "GitlabBrute",
+                    "vul_name": "Gitlab 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "GrafanaBrute",
+                    "vul_name": "Grafana 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "NexusBrute",
+                    "vul_name": "Nexus Repository 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "RedisBrute",
+                    "vul_name": "Redis 弱口令",
+                    "enable": True,
+                },
+                {"plugin_name": "SSHBrute", "vul_name": "SSH 弱口令", "enable": True},
+                {
+                    "plugin_name": "HarborBrute",
+                    "vul_name": "Harbor 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Shiro_GCM_Brute",
+                    "vul_name": "Shiro GCM 弱密钥",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "ClickhouseBrute",
+                    "vul_name": "Clickhouse 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "TomcatBrute",
+                    "vul_name": "Tomcat 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "SQLServerBrute",
+                    "vul_name": "SQLServer 弱口令",
+                    "enable": True,
+                },
+                {"plugin_name": "POP3Brute", "vul_name": "POP3 弱口令", "enable": True},
+                {
+                    "plugin_name": "AlibabaDruidBrute",
+                    "vul_name": "Alibaba Druid 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "PostgreSQLBrute",
+                    "vul_name": "PostgreSQL 弱口令",
+                    "enable": True,
+                },
                 {
                     "plugin_name": "APISIXBrute",
                     "vul_name": "APISIX 弱口令",
+                    "enable": True,
+                },
+                {"plugin_name": "FTPBrute", "vul_name": "FTP 弱口令", "enable": True},
+                {
+                    "plugin_name": "JenkinsBrute",
+                    "vul_name": "Jenkins 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Shiro_CBC_Brute",
+                    "vul_name": "Shiro CBC 弱密钥",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "NacosBrute",
+                    "vul_name": "Nacos 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "CobaltStrikeBrute",
+                    "vul_name": "CobaltStrike 弱口令",
+                    "enable": True,
+                },
+                {"plugin_name": "SMTPBrute", "vul_name": "SMTP 弱口令", "enable": True},
+                {
+                    "plugin_name": "MysqlBrute",
+                    "vul_name": "MySQL 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "MongoDBBrute",
+                    "vul_name": "MongoDB 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "OpenfireBrute",
+                    "vul_name": "Openfire 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "ExchangeBrute",
+                    "vul_name": "Exchange 邮件服务器弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "ActiveMQBrute",
+                    "vul_name": "ActiveMQ 弱口令",
+                    "enable": True,
+                },
+                {"plugin_name": "IMAPBrute", "vul_name": "IMAP 弱口令", "enable": True},
+                {"plugin_name": "RDPBrute", "vul_name": "RDP 弱口令", "enable": True},
+                {
+                    "plugin_name": "GitlabBrute",
+                    "vul_name": "Gitlab 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "GrafanaBrute",
+                    "vul_name": "Grafana 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "NexusBrute",
+                    "vul_name": "Nexus Repository 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "RedisBrute",
+                    "vul_name": "Redis 弱口令",
+                    "enable": True,
+                },
+                {"plugin_name": "SSHBrute", "vul_name": "SSH 弱口令", "enable": True},
+                {
+                    "plugin_name": "HarborBrute",
+                    "vul_name": "Harbor 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Shiro_GCM_Brute",
+                    "vul_name": "Shiro GCM 弱密钥",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "ClickhouseBrute",
+                    "vul_name": "Clickhouse 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "TomcatBrute",
+                    "vul_name": "Tomcat 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "SQLServerBrute",
+                    "vul_name": "SQLServer 弱口令",
+                    "enable": True,
+                },
+                {"plugin_name": "POP3Brute", "vul_name": "POP3 弱口令", "enable": True},
+                {
+                    "plugin_name": "AlibabaDruidBrute",
+                    "vul_name": "Alibaba Druid 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "PostgreSQLBrute",
+                    "vul_name": "PostgreSQL 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "APISIXBrute",
+                    "vul_name": "APISIX 弱口令",
+                    "enable": True,
+                },
+                {"plugin_name": "FTPBrute", "vul_name": "FTP 弱口令", "enable": True},
+                {
+                    "plugin_name": "JenkinsBrute",
+                    "vul_name": "Jenkins 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Shiro_CBC_Brute",
+                    "vul_name": "Shiro CBC 弱密钥",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "NacosBrute",
+                    "vul_name": "Nacos 弱口令",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "CobaltStrikeBrute",
+                    "vul_name": "CobaltStrike 弱口令",
+                    "enable": True,
+                },
+                {"plugin_name": "SMTPBrute", "vul_name": "SMTP 弱口令", "enable": True},
+                {
+                    "plugin_name": "MysqlBrute",
+                    "vul_name": "MySQL 弱口令",
                     "enable": True,
                 },
             ],
@@ -728,7 +1390,7 @@ def add_policy(arl_url, token, policy_name, scope_id):
     try:
         response_data = response.json()
     except ValueError:
-        print(f"无法解析ADD {policy_name} 策略的响应内容")
+        log_message(f"无法解析ADD {policy_name} 策略的响应内容")
         return None
 
     policy_id = response_data.get("data", {}).get("policy_id")
@@ -756,7 +1418,7 @@ def get_arl_all_policies(arl_url, token):
             print(e, "出错了，请排查")
             break
         except ValueError:
-            print("无法解析响应内容")
+            log_message("无法解析响应内容")
             break
 
         if total_pages is None:
@@ -766,7 +1428,7 @@ def get_arl_all_policies(arl_url, token):
         if "items" in response_data:
             all_policies.extend(response_data["items"])
         else:
-            print("响应中没有 'items' 键")
+            log_message("响应中没有 'items' 键")
             break
 
         page += 1  # 请求下一页
@@ -868,9 +1530,10 @@ def sync_domain_assets(
         arl_domains = set(asset_scope["scope_array"])
 
         # 从bbdb获取对应的域名
+        # 注意：这里假设 business_id 已经是字符串类型，需要转换为 ObjectId 类型进行匹配
         business_id = next(
             (
-                business["_id"]
+                str(business["_id"])  # 将 ObjectId 转换为字符串
                 for business in businesses
                 if business["name"] == asset_scope["name"]
             ),
@@ -878,15 +1541,17 @@ def sync_domain_assets(
         )
         if business_id is None:
             continue
+
+        # 这里不需要转换 business_id，因为它已经是从数据库中获取的字符串类型
         bbdb_domains = set(
             domain["name"]
             for domain in root_domains
-            if domain["business_id"] == business_id
+            if str(domain["business_id"]) == business_id  # 确保类型一致
         )
         bbdb_domains.update(
             domain["name"]
             for domain in sub_domains
-            if domain["business_id"] == business_id
+            if str(domain["business_id"]) == business_id  # 确保类型一致
         )
 
         # 找出需要添加到ARL的域名
@@ -911,12 +1576,8 @@ def sync_domain_assets(
                 response.raise_for_status()
             except requests.RequestException as e:
                 print(e, "出错了，请排查")
-            if response.status_code == 200:
-                print(
-                    f"Added {len(new_domains_to_arl)} domains to ARL asset scope {scope_id}"
-                )
-            else:
-                print(f"Failed to add domains to ARL asset scope {scope_id}")
+            if not response.status_code == 200:
+                log_message(f"Failed to add domains to ARL asset scope {scope_id}")
 
             # 找到对应的策略
             policy = next(
@@ -938,12 +1599,18 @@ def sync_domain_assets(
         if new_domains_to_bbdb:
             # 添加到bbdb的root_domain和sub_domain表中
             root_domains_to_add = [
-                {"business_id": business_id, "domain": domain}
+                {
+                    "business_id": ObjectId(business_id),
+                    "domain": domain,
+                }  # 将字符串转换为 ObjectId
                 for domain in new_domains_to_bbdb
                 if domain in root_domains
             ]
             sub_domains_to_add = [
-                {"business_id": business_id, "domain": domain}
+                {
+                    "business_id": ObjectId(business_id),
+                    "domain": domain,
+                }  # 将字符串转换为 ObjectId
                 for domain in new_domains_to_bbdb
                 if domain not in root_domains
             ]
@@ -970,7 +1637,7 @@ def sync_ip_assets(db, arl_all_asset_scopes, businesses):
         # 从bbdb获取对应的IP
         business_id = next(
             (
-                business["_id"]
+                str(business["_id"])  # 将 ObjectId 转换为字符串
                 for business in businesses
                 if business["name"] == asset_scope["name"]
             ),
@@ -978,7 +1645,10 @@ def sync_ip_assets(db, arl_all_asset_scopes, businesses):
         )
         if business_id is None:
             continue
-        bbdb_ips = set(ip["ip"] for ip in db["ip"].find({"business_id": business_id}))
+
+        bbdb_ips = set(
+            ip["ip"] for ip in db["ip"].find({"business_id": ObjectId(business_id)})
+        )
 
         # 找出需要添加到bbdb的IP
         new_ips_to_bbdb = arl_ips - bbdb_ips
@@ -988,7 +1658,9 @@ def sync_ip_assets(db, arl_all_asset_scopes, businesses):
                 [
                     {
                         "ip": ip,
-                        "business_id": business_id,
+                        "business_id": ObjectId(
+                            business_id
+                        ),  # 确保 business_id 转换为 ObjectId
                         "notes": "from arl",
                         "create_time": datetime.now(),
                         "update_time": datetime.now(),
@@ -996,23 +1668,26 @@ def sync_ip_assets(db, arl_all_asset_scopes, businesses):
                     for ip in new_ips_to_bbdb
                 ]
             )
-            print(f"Added {len(new_ips_to_bbdb)} IPs to bbdb business {business_id}")
+            log_message(
+                f"Added {len(new_ips_to_bbdb)} IPs to bbdb business {business_id}"
+            )
 
 
 def main():
-    # 读取配置文件
-    with open("config_debug.yaml", "r") as f:
-        config = yaml.safe_load(f)
-
     # 检查环境变量
-    if not check_env_vars(config):
+    if not check_env_vars():
         sys.exit("环境变量检查失败。")
 
-    # 从配置文件读取环境变量
-    arl_url = config["DEFAULT"].get("BBDB_ARL_URL")
-    username = config["DEFAULT"].get("BBDB_ARL_USERNAME")
-    password = config["DEFAULT"].get("BBDB_ARL_PASSWORD")
-    mongodb_uri = config["DEFAULT"].get("BBDB_MONGODB_URI")
+    # 从环境变量获取参数
+    arl_url = os.environ.get("BBDB_ARL_URL")
+    username = os.environ.get("BBDB_ARL_USERNAME")
+    password = os.environ.get("BBDB_ARL_PASSWORD")
+    mongodb_uri = os.environ.get("BBDB_MONGOURI")
+    name_keyword = "国内-雷神众测-"
+
+    if not name_keyword:
+        log_message("BBDB_NAME_KEYWORD 环境变量为空, 退出程序", False)
+        sys.exit(1)
 
     # 连接到MongoDB
     client = MongoClient(mongodb_uri)
@@ -1024,10 +1699,10 @@ def main():
     new_ips_to_bbdb = set()
 
     # 1. 从bbdb全量读取"国内-"开头的business，root_domain,sub_domain数据，并登录ARL获取token。
-    token = login_arl(arl_url, username, password)
-    print("1-bbdb读取中..")
-    businesses, root_domains, sub_domains = get_bbdb_data(db)
-    print("1-读取bbdb完成，准备获取arl资产分组")
+    token = login_arl()
+    log_message("1-bbdb读取中..")
+    businesses, root_domains, sub_domains = get_bbdb_data(db, name_keyword)
+    log_message("1-读取bbdb完成，准备获取arl资产分组")
 
     # 2. 获取ARL中资产分组的名称，并与business中的name进行比较，确定需要互相插入的资产分组。
     arl_all_asset_scopes = retrieve_all_arl_asset_scopes(token, arl_url)
@@ -1035,7 +1710,7 @@ def main():
         businesses, arl_all_asset_scopes
     )
     arl_scope_ids = [asset_scope["_id"] for asset_scope in arl_all_asset_scopes]
-    print("2-arl和bbdb分组信息确认完成，准备arl插入")
+    log_message("2-arl和bbdb分组信息确认完成，准备arl插入")
 
     # 3. 首先进行bbdb向ARL进行新分组的插入，插入根域名和子域名（合并去重，保持原有顺序，根域名在先），scope_type为domain。
     insert_new_group_to_arl(
@@ -1046,15 +1721,15 @@ def main():
         root_domains,
         sub_domains,
     )
-    print("3-arl分组插入完成")
+    log_message("3-arl分组插入完成")
 
     # 重新获取ARL中资产分组的scope_id
     arl_all_asset_scopes = retrieve_all_arl_asset_scopes(token, arl_url)
-    print("3-刷新arl分组资产..")
+    log_message("3-刷新arl分组资产..")
 
     # 4. 完成后，再进行ARL向bbdb的插入。对于每一个只在 ARL 资产分组中的 name，添加到 bbdb 中
     insert_new_group_to_bbdb(db, arl_only_asset_scopes, arl_all_asset_scopes)
-    print("4-bbdb分组插入完成，等待检测分组扫描策略是否完整..")
+    log_message("4-bbdb分组插入完成，等待检测分组扫描策略是否完整..")
 
     # 5.扫描策略配置。为ARL中没有对应扫描策略的资产分组，添加与其资产分组名称相同的扫描策略.
     arl_all_policies = get_arl_all_policies(arl_url, token)
@@ -1075,15 +1750,17 @@ def main():
             try:
                 add_policy(arl_url, token, asset_group_name, scope_id)
             except Exception as e:
-                print(f"Failed to add policy for asset group {asset_group_name}: {e}")
+                log_message(
+                    f"Failed to add policy for asset group {asset_group_name}: {e}"
+                )
         else:
-            print(f"Asset group with scope_id {scope_id} not found")
-    print("5-策略检测完成")
+            log_message(f"Asset group with scope_id {scope_id} not found")
+    log_message("5-策略检测完成")
 
     # 重新获取bbdb的root_domains和sub_domains
-    print("5-等待刷新bbdb..")
-    businesses, root_domains, sub_domains = get_bbdb_data(db)
-    print("5-刷新bbdb完成，开始双向域名资产同步..")
+    log_message("5-等待刷新bbdb..")
+    businesses, root_domains, sub_domains = get_bbdb_data(db, name_keyword)
+    log_message("5-刷新bbdb完成，开始双向域名资产同步..")
 
     # 6. 域名资产同步。对双向相同的分组中的域名资产进行双向同步，bbdb侧从内存中读取比较后，提取绝对根域名并对比root_domain表，子域名对比sub_domain表，ARL侧则将新增子域名直接插入资产分组的资产范围中后，将新增的域名也启动监控任务。
     sync_domain_assets(
@@ -1096,52 +1773,52 @@ def main():
         arl_all_asset_scopes,
         arl_all_policies,
     )
-    print("6-域名资产双向同步完成")
+    log_message("6-域名资产双向同步完成")
 
     # 重新获取bbdb的root_domains和sub_domains
-    print("6-等待刷新bbdb..")
-    businesses, root_domains, sub_domains = get_bbdb_data(db)
-    print("6-刷新bbdb完成")
+    log_message("6-等待刷新bbdb..")
+    businesses, root_domains, sub_domains = get_bbdb_data(db, name_keyword)
+    log_message("6-刷新bbdb完成")
 
     # 7. IP资产同步。对双向相同的分组中的IP资产进行双向同步，bbdb侧从内存中读取比较后，提取IP并对比ip表，ARL侧则将新增IP直接插入资产分组的资产范围中后，将新增的IP也启动监控任务。
     sync_ip_assets(db, arl_all_asset_scopes, businesses)
-    print("7-ip资产导入bbdb完成,开始添加arl监控任务..")
+    log_message("7-ip资产导入bbdb完成,开始添加arl监控任务..")
 
-    # 8.监控任务触发。配置好资产分组和对应的策略后，批量为新增的策略和资产分组触发监控和站点监控任务。
-    print("8-刷新arl资产，准备批量添加监控任务.")
-    # 重新获取策略列表
-    arl_all_policies = get_arl_all_policies(arl_url, token)
-    arl_all_asset_scopes = retrieve_all_arl_asset_scopes(token, arl_url)
-    for asset_scope in arl_all_asset_scopes:
-        scope_id = asset_scope["_id"]
-        domain = ",".join(asset_scope["scope_array"])
-        # 找到对应的策略
-        policy = next(
-            (
-                policy
-                for policy in arl_all_policies
-                if policy["policy"]["scope_config"]["scope_id"] == scope_id
-            ),
-            None,
-        )
-        if policy is not None:
-            policy_id = policy["_id"]
-            add_scheduler(token, arl_url, scope_id, domain, policy_id)
-            add_site_monitor(token, arl_url, scope_id)  # 添加站点更新监控周期任务
-        else:
-            print(f"No policy found for scope_id {scope_id}")
-    print("8-arl监控任务添加完毕,统计数据，脚本结束。")
+    # # 8.监控任务触发。配置好资产分组和对应的策略后，批量为新增的策略和资产分组触发监控和站点监控任务。
+    # log_message("8-刷新arl资产，准备批量添加监控任务.")
+    # # 重新获取策略列表
+    # arl_all_policies = get_arl_all_policies(arl_url, token)
+    # arl_all_asset_scopes = retrieve_all_arl_asset_scopes(token, arl_url)
+    # for asset_scope in arl_all_asset_scopes:
+    #     scope_id = asset_scope["_id"]
+    #     domain = ",".join(asset_scope["scope_array"])
+    #     # 找到对应的策略
+    #     policy = next(
+    #         (
+    #             policy
+    #             for policy in arl_all_policies
+    #             if policy["policy"]["scope_config"]["scope_id"] == scope_id
+    #         ),
+    #         None,
+    #     )
+    #     if policy is not None:
+    #         policy_id = policy["_id"]
+    #         add_scheduler(token, arl_url, scope_id, domain, policy_id)
+    #         add_site_monitor(token, arl_url, scope_id)  # 添加站点更新监控周期任务
+    #     else:
+    #         log_message(f"No policy found for scope_id {scope_id}")
+    # log_message("8-arl监控任务添加完毕,统计数据，脚本结束。")
 
-    # 9. 在每次脚本运行结束后，统计双方互相同步的新资产分组数量，新同步的子域名数量、IP数量。
-    new_asset_scopes_count = len(business_only_asset_scopes) + len(
-        arl_only_asset_scopes
-    )
-    new_domains_count = len(new_domains_to_arl) + len(new_domains_to_bbdb)
-    new_ips_count = len(new_ips_to_bbdb)
+    # # 9. 在每次脚本运行结束后，统计双方互相同步的新资产分组数量，新同步的子域名数量、IP数量。
+    # new_asset_scopes_count = len(business_only_asset_scopes) + len(
+    #     arl_only_asset_scopes
+    # )
+    # new_domains_count = len(new_domains_to_arl) + len(new_domains_to_bbdb)
+    # new_ips_count = len(new_ips_to_bbdb)
 
-    print(f"New asset groups synced: {new_asset_scopes_count}")
-    print(f"New domains synced: {new_domains_count}")
-    print(f"New IPs synced: {new_ips_count}")
+    # log_message(f"New asset groups synced: {new_asset_scopes_count}")
+    # log_message(f"New domains synced: {new_domains_count}")
+    # log_message(f"New IPs synced: {new_ips_count}")
 
 
 if __name__ == "__main__":
