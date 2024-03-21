@@ -1,7 +1,7 @@
 """
 作者：soapffz
 创建时间：2023年10月1日
-最后修改时间：2023年10月1日
+最后修改时间：2024年3月21日
 
 脚本功能：从enscango导出的xlsx批量读取到bbdb中，需要传入文件名称和business_name
 """
@@ -17,6 +17,17 @@ from datetime import datetime
 # 读取配置文件
 with open("config_product.yaml", "r") as f:
     config = yaml.safe_load(f)
+
+
+def read_excel_sheet(xlsx_file_name, sheet_name):
+    """
+    尝试读取指定的Excel sheet，如果不存在则返回空的DataFrame。
+    """
+    try:
+        return pd.read_excel(xlsx_file_name, sheet_name=sheet_name)
+    except ValueError:
+        print(f"{sheet_name} sheet不存在，跳过。")
+        return pd.DataFrame()
 
 
 def process_data(db, xlsx_file_name, business_name):
@@ -37,27 +48,28 @@ def process_data(db, xlsx_file_name, business_name):
         business = {
             "name": business_name,
             "company": [],
-            "create_time": datetime(2023, 10, 1),
+            "create_time": datetime.now(),
             "update_time": datetime.now(),
         }
         business_collection.insert_one(business)
     business_id = business["_id"]
 
     # 读取Excel文件
-    try:
-        df_app = pd.read_excel(xlsx_file_name, sheet_name="APP")
-        df_wechat = pd.read_excel(xlsx_file_name, sheet_name="微信公众号")
-        df_icp = pd.read_excel(xlsx_file_name, sheet_name="ICP备案")
-        df_software = pd.read_excel(xlsx_file_name, sheet_name="软件著作权")
-        df_company = pd.read_excel(xlsx_file_name, sheet_name="企业信息")
-    except Exception as e:
-        print(f"读取Excel文件时发生错误：{e}")
-        exit(1)
+    # 使用封装的函数读取各个sheet
+    df_app = read_excel_sheet(xlsx_file_name, "APP")
+    df_wechat = read_excel_sheet(xlsx_file_name, "微信公众号")
+    df_icp = read_excel_sheet(xlsx_file_name, "ICP备案")
+    df_software = read_excel_sheet(xlsx_file_name, "软件著作权")
+    df_company = read_excel_sheet(xlsx_file_name, "企业信息")
 
     # 提取公司名称并插入到business表的company列表中
     new_companies = []
     for _, row in df_company.iterrows():
-        if "企业名称" not in row or pd.isnull(row["企业名称"]) or row["经营状态"] == "注销":
+        if (
+            "企业名称" not in row
+            or pd.isnull(row["企业名称"])
+            or row["经营状态"] == "注销"
+        ):
             continue
         company_name = row["企业名称"]
         if company_name not in business["company"]:
@@ -67,7 +79,7 @@ def process_data(db, xlsx_file_name, business_name):
     if new_companies:
         business["company"].extend(new_companies)
         business["update_time"] = business.get("update_time") or datetime.now()
-        business["create_time"] = business.get("create_time") or datetime(2023, 10, 1)
+        business["create_time"] = business.get("create_time") or datetime.now()
         business_collection.update_one(
             {"_id": business_id},
             {
@@ -84,15 +96,18 @@ def process_data(db, xlsx_file_name, business_name):
     for _, row in df_app.iterrows():
         if "名称" not in row or pd.isnull(row["名称"]):
             continue
+        notes = row.get("简介")
+        if pd.isnull(notes) or notes == "":
+            notes = "set by soapffz manually"
         operation = UpdateOne(
             {"name": row["名称"]},
             {
                 "$setOnInsert": {
                     "name": row.get("名称"),
-                    "notes": row.get("简介"),
+                    "notes": notes,
                     "avatar_pic_url": row.get("logo"),
                     "business_id": business_id,
-                    "create_time": datetime(2023, 10, 1),
+                    "create_time": datetime.now(),
                 },
                 "$currentDate": {"update_time": True},
             },
@@ -107,15 +122,19 @@ def process_data(db, xlsx_file_name, business_name):
     for _, row in df_wechat.iterrows():
         if "ID" not in row or pd.isnull(row["ID"]):
             continue
+        notes = row.get("描述")
+        if pd.isnull(notes) or notes == "":
+            notes = "set by soapffz manually"
         operation = UpdateOne(
             {"wechatid": row["ID"]},
             {
                 "$setOnInsert": {
                     "name": row.get("名称"),
-                    "notes": row.get("简介", "import from enscango by soapffz"),
-                    "avatar_pic_url": row.get("logo"),
+                    "notes": notes,
+                    "avatar_pic_url": row.get("LOGO"),
+                    "wechat_public_pic_url": row.get("二维码"),
                     "business_id": business_id,
-                    "create_time": datetime(2023, 10, 1),
+                    "create_time": datetime.now(),
                 },
                 "$currentDate": {"update_time": True},
             },
@@ -133,14 +152,17 @@ def process_data(db, xlsx_file_name, business_name):
         domain_name = row["域名"]
         existing_domain = db["root_domain"].find_one({"name": domain_name})
         if existing_domain is None:
+            company = row.get("公司名称")
+            if pd.isnull(company) or company == "":
+                company = ""
             operation = InsertOne(
                 {
                     "name": domain_name,
                     "icpregnum": row.get("网站备案/许可证号"),
-                    "company": row.get("公司名称"),
+                    "company": company,
                     "notes": "import from enscango by soapffz",
                     "business_id": business_id,
-                    "create_time": datetime(2023, 10, 1),
+                    "create_time": datetime.now(),
                     "update_time": datetime.now(),
                 }
             )
@@ -153,16 +175,19 @@ def process_data(db, xlsx_file_name, business_name):
     for _, row in df_software.iterrows():
         if "软件名称" not in row or pd.isnull(row["软件名称"]):
             continue
+        notes = row.get("简介")
+        if pd.isnull(notes) or notes == "":
+            notes = "set by soapffz manually"
         operation = UpdateOne(
             {"name": row["软件名称"]},
             {
                 "$setOnInsert": {
                     "name": row["软件名称"],
-                    "notes": row.get("软件简介"),
+                    "notes": notes,
                     "regnumber": row.get("登记号"),
                     "type": row.get("分类"),
                     "business_id": business_id,
-                    "create_time": datetime(2023, 10, 1),
+                    "create_time": datetime.now(),
                 },
                 "$currentDate": {"update_time": True},
             },
@@ -184,8 +209,10 @@ if __name__ == "__main__":
         exit(1)
 
     # 传入xlsx文件名称和对应的business_name
-    xlsx_file_name = "outs/【合并】--2023-10-18--1697641169.xlsx"
-    business_name = "国内-招商银行"
+    xlsx_file_name = (
+        "outs/浙江永康农村商业银行股份有限公司--2024-03-21--1711028036.xlsx"
+    )
+    business_name = "国内-雷神众测-永康农商银行"
 
     # 处理数据并插入到数据库
     process_data(db, xlsx_file_name, business_name)
