@@ -5,7 +5,7 @@ new Env('bbdb-ARL联动');
 文件名: bbdb_arl.py
 作者: soapffz
 创建日期: 2023年10月1日
-最后修改日期: 2024年3月21日
+最后修改日期: 2024年3月22日
 
 本脚本实现了bbdb和ARL之间的联动，主要包括以下步骤：
 
@@ -193,7 +193,7 @@ def add_asset_scope(token, arl_url, name, scope):
         # log_message(资产分组 {name} 已经存在，跳过添加")
         return
 
-    scope_domains = scope.split(',')
+    scope_domains = scope.split(",")
     while scope_domains:
         data = {"scope_type": "domain", "name": name, "scope": ",".join(scope_domains)}
         headers = {"Token": token, "Content-Type": "application/json; charset=UTF-8"}
@@ -228,6 +228,7 @@ def add_asset_scope(token, arl_url, name, scope):
 
     if not scope_domains:
         log_message(f"{name} 所有域名都是无效的,跳过插入")
+
 
 def fetch_arl_asset_scope_names(token, arl_url):
     asset_scopes = retrieve_all_arl_asset_scopes(token, arl_url)
@@ -388,14 +389,46 @@ def insert_new_group_to_bbdb(db, arl_only_asset_scopes, arl_all_asset_scopes):
                 db["sub_domain"].insert_many(sub_domains_to_insert)
 
 
+def delete_policy(arl_url, token, policy_id):
+    # 删除arl中某个指定策略
+    delete_url = f"{arl_url}/api/policy/delete/"
+    headers = {"Content-Type": "application/json; charset=UTF-8", "token": token}
+    data = {"policy_id": [policy_id]}
+
+    try:
+        response = requests.post(delete_url, headers=headers, json=data, verify=False)
+        response.raise_for_status()
+        if response.json().get("code") == 200:
+            log_message(f"策略 {policy_id} 删除成功")
+        else:
+            log_message(
+                f"策略 {policy_id} 删除失败: {response.json().get('message')}", False
+            )
+    except requests.RequestException as e:
+        log_message(f"删除策略请求失败: {e}", False)
+
+
 def add_policy(arl_url, token, policy_name, scope_id):
     # 获取所有的策略
     arl_all_policies = get_arl_all_policies(arl_url, token)
-    
+
     # 检查策略是否已经存在
-    if any(policy["name"] == policy_name for policy in arl_all_policies):
-        # log_message(f"策略 {policy_name} 已经存在，跳过添加")
-        return
+    policy_to_delete = None
+
+    for policy in arl_all_policies:
+        if policy["name"] == policy_name:
+            if policy["policy"]["scope_config"]["scope_id"] == scope_id:
+                log_message(f"策略 {policy_name} 已存在且 scope_id 匹配，跳过添加")
+                return
+            else:
+                policy_to_delete = policy["_id"]
+                break
+
+    if policy_to_delete:
+        log_message(
+            f"策略 {policy_name} 存在但是与 scope_id 不对应，尝试删除后重新添加"
+        )
+        delete_policy(arl_url, token, policy_to_delete)
 
     # 准备请求参数
     payload = {
@@ -1700,7 +1733,7 @@ def main():
 
     # 1. 从bbdb全量读取"国内-"开头的business，root_domain,sub_domain数据，并登录ARL获取token。
     token = login_arl()
-    log_message("1-bbdb读取中..")
+    log_message("1-bbdb读取中")
     businesses, root_domains, sub_domains = get_bbdb_data(db, name_keyword)
     log_message("1-读取bbdb完成，准备获取arl资产分组")
 
@@ -1709,30 +1742,33 @@ def main():
     business_only_asset_scopes, arl_only_asset_scopes = compare_business_and_arl(
         businesses, arl_all_asset_scopes
     )
-    arl_scope_ids = [asset_scope["_id"] for asset_scope in arl_all_asset_scopes]
     log_message("2-arl和bbdb分组信息确认完成，准备arl插入")
 
     # 3. 首先进行bbdb向ARL进行新分组的插入，插入根域名和子域名（合并去重，保持原有顺序，根域名在先），scope_type为domain。
-    insert_new_group_to_arl(
-        token,
-        arl_url,
-        business_only_asset_scopes,
-        businesses,
-        root_domains,
-        sub_domains,
-    )
-    log_message("3-arl分组插入完成")
-
-    # 重新获取ARL中资产分组的scope_id
-    arl_all_asset_scopes = retrieve_all_arl_asset_scopes(token, arl_url)
-    log_message("3-刷新arl分组资产..")
+    if business_only_asset_scopes:
+        insert_new_group_to_arl(
+            token,
+            arl_url,
+            business_only_asset_scopes,
+            businesses,
+            root_domains,
+            sub_domains,
+        )
+        # 重新获取ARL中资产分组的scope_id
+        arl_all_asset_scopes = retrieve_all_arl_asset_scopes(token, arl_url)
+        log_message("3-arl新分组分组插入完成，已刷新ARL资产，准备检测扫描策略")
+    else:
+        log_message("3-没有需要插入到 arl 的新分组，准备检测扫描策略")
 
     # 4. 完成后，再进行ARL向bbdb的插入。对于每一个只在 ARL 资产分组中的 name，添加到 bbdb 中
-    insert_new_group_to_bbdb(db, arl_only_asset_scopes, arl_all_asset_scopes)
-    log_message("4-bbdb分组插入完成，等待检测分组扫描策略是否完整..")
+    if arl_only_asset_scopes:
+        insert_new_group_to_bbdb(db, arl_only_asset_scopes, arl_all_asset_scopes)
+        log_message("4-没有需要插入到 bbdb 的新分组")
+    else:
+        log_message("4-bbdb分组插入完成，等待检测分组扫描策略是否完整")
 
     # 5.扫描策略配置。为ARL中没有对应扫描策略的资产分组，添加与其资产分组名称相同的扫描策略.
-    arl_all_policies = get_arl_all_policies(arl_url, token)
+    arl_scope_ids = [asset_scope["_id"] for asset_scope in arl_all_asset_scopes]
     unconfigured_asset_groups = get_unconfigured_asset_group_ids(
         arl_url, token, arl_scope_ids
     )
@@ -1746,9 +1782,12 @@ def main():
             ),
             None,
         )
+        log_message(scope_id)
+        log_message(asset_group_name)
         if asset_group_name is not None:
             try:
                 add_policy(arl_url, token, asset_group_name, scope_id)
+                exit(-1)
             except Exception as e:
                 log_message(
                     f"Failed to add policy for asset group {asset_group_name}: {e}"
@@ -1758,11 +1797,12 @@ def main():
     log_message("5-策略检测完成")
 
     # 重新获取bbdb的root_domains和sub_domains
-    log_message("5-等待刷新bbdb..")
+    log_message("5-等待刷新bbdb")
     businesses, root_domains, sub_domains = get_bbdb_data(db, name_keyword)
-    log_message("5-刷新bbdb完成，开始双向域名资产同步..")
+    log_message("5-刷新bbdb完成，开始双向域名资产同步")
 
     # 6. 域名资产同步。对双向相同的分组中的域名资产进行双向同步，bbdb侧从内存中读取比较后，提取绝对根域名并对比root_domain表，子域名对比sub_domain表，ARL侧则将新增子域名直接插入资产分组的资产范围中后，将新增的域名也启动监控任务。
+    arl_all_policies = get_arl_all_policies(arl_url, token)
     sync_domain_assets(
         db,
         token,
@@ -1776,49 +1816,49 @@ def main():
     log_message("6-域名资产双向同步完成")
 
     # 重新获取bbdb的root_domains和sub_domains
-    log_message("6-等待刷新bbdb..")
+    log_message("6-等待刷新bbdb")
     businesses, root_domains, sub_domains = get_bbdb_data(db, name_keyword)
     log_message("6-刷新bbdb完成")
 
     # 7. IP资产同步。对双向相同的分组中的IP资产进行双向同步，bbdb侧从内存中读取比较后，提取IP并对比ip表，ARL侧则将新增IP直接插入资产分组的资产范围中后，将新增的IP也启动监控任务。
     sync_ip_assets(db, arl_all_asset_scopes, businesses)
-    log_message("7-ip资产导入bbdb完成,开始添加arl监控任务..")
+    log_message("7-ip资产导入bbdb完成,开始添加arl监控任务")
 
-    # # 8.监控任务触发。配置好资产分组和对应的策略后，批量为新增的策略和资产分组触发监控和站点监控任务。
-    # log_message("8-刷新arl资产，准备批量添加监控任务.")
-    # # 重新获取策略列表
-    # arl_all_policies = get_arl_all_policies(arl_url, token)
-    # arl_all_asset_scopes = retrieve_all_arl_asset_scopes(token, arl_url)
-    # for asset_scope in arl_all_asset_scopes:
-    #     scope_id = asset_scope["_id"]
-    #     domain = ",".join(asset_scope["scope_array"])
-    #     # 找到对应的策略
-    #     policy = next(
-    #         (
-    #             policy
-    #             for policy in arl_all_policies
-    #             if policy["policy"]["scope_config"]["scope_id"] == scope_id
-    #         ),
-    #         None,
-    #     )
-    #     if policy is not None:
-    #         policy_id = policy["_id"]
-    #         add_scheduler(token, arl_url, scope_id, domain, policy_id)
-    #         add_site_monitor(token, arl_url, scope_id)  # 添加站点更新监控周期任务
-    #     else:
-    #         log_message(f"No policy found for scope_id {scope_id}")
-    # log_message("8-arl监控任务添加完毕,统计数据，脚本结束。")
+    # 8.监控任务触发。配置好资产分组和对应的策略后，批量为新增的策略和资产分组触发监控和站点监控任务。
+    log_message("8-刷新arl资产，准备批量添加监控任务.")
+    # 重新获取策略列表
+    arl_all_policies = get_arl_all_policies(arl_url, token)
+    arl_all_asset_scopes = retrieve_all_arl_asset_scopes(token, arl_url)
+    for asset_scope in arl_all_asset_scopes:
+        scope_id = asset_scope["_id"]
+        domain = ",".join(asset_scope["scope_array"])
+        # 找到对应的策略
+        policy = next(
+            (
+                policy
+                for policy in arl_all_policies
+                if policy["policy"]["scope_config"]["scope_id"] == scope_id
+            ),
+            None,
+        )
+        if policy is not None:
+            policy_id = policy["_id"]
+            add_scheduler(token, arl_url, scope_id, domain, policy_id)
+            add_site_monitor(token, arl_url, scope_id)  # 添加站点更新监控周期任务
+        else:
+            log_message(f"No policy found for scope_id {scope_id}")
+    log_message("8-arl监控任务添加完毕,统计数据，脚本结束。")
 
-    # # 9. 在每次脚本运行结束后，统计双方互相同步的新资产分组数量，新同步的子域名数量、IP数量。
-    # new_asset_scopes_count = len(business_only_asset_scopes) + len(
-    #     arl_only_asset_scopes
-    # )
-    # new_domains_count = len(new_domains_to_arl) + len(new_domains_to_bbdb)
-    # new_ips_count = len(new_ips_to_bbdb)
+    # 9. 在每次脚本运行结束后，统计双方互相同步的新资产分组数量，新同步的子域名数量、IP数量。
+    new_asset_scopes_count = len(business_only_asset_scopes) + len(
+        arl_only_asset_scopes
+    )
+    new_domains_count = len(new_domains_to_arl) + len(new_domains_to_bbdb)
+    new_ips_count = len(new_ips_to_bbdb)
 
-    # log_message(f"New asset groups synced: {new_asset_scopes_count}")
-    # log_message(f"New domains synced: {new_domains_count}")
-    # log_message(f"New IPs synced: {new_ips_count}")
+    log_message(f"New asset groups synced: {new_asset_scopes_count}")
+    log_message(f"New domains synced: {new_domains_count}")
+    log_message(f"New IPs synced: {new_ips_count}")
 
 
 if __name__ == "__main__":
