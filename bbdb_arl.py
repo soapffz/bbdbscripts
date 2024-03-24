@@ -5,7 +5,7 @@ new Env('bbdb-ARL联动');
 文件名: bbdb_arl.py
 作者: soapffz
 创建日期: 2023年10月1日
-最后修改日期: 2024年3月22日
+最后修改日期: 2024年3月24日
 
 本脚本实现了bbdb和ARL之间的联动，详细步骤以main函数中注释为准
 
@@ -89,7 +89,7 @@ def login_arl():
         log_message("Token is missing in the response.", False)
         return None
 
-    log_message("ARL login successful.")
+    log_message("ARL login successful")
     return token
 
 
@@ -233,7 +233,7 @@ def get_arl_scopes_pages(token, arl_url):
             log_message(f"Request failed: {e}")
             break
         except ValueError:
-            log_message("Failed to decode JSON response.")
+            log_message("Failed to decode JSON response")
             break
 
         if total_pages is None:
@@ -1863,6 +1863,7 @@ def sync_domain_assets(
 def arl_site_to_bbdb(
     db, arl_url, token, businesses, root_domains, sub_domains, blacklists, sites
 ):
+    global new_sites_to_bbdb
     # 将root_domains和sub_domains列表转换为字典
     root_domains = {root_domain["name"]: root_domain for root_domain in root_domains}
     sub_domains = {sub_domain["name"]: sub_domain for sub_domain in sub_domains}
@@ -1877,13 +1878,19 @@ def arl_site_to_bbdb(
         if blacklist["type"] == "url"
     }
 
+    # 构建已存在站点的URL集合
+    existing_sites_urls = {site["name"].lower() for site in sites}
+
     # 准备插入的站点数据列表
-    sites_to_insert = []
+    new_sites_to_bbdb = []
     inserted_sites_count = 0
 
     for site_url in arl_sites_data:
-        # 去除黑名单中的URL
-        if site_url.lower() in blacklist_urls:
+        # 去除黑名单中的URL和已存在的站点URL
+        if (
+            site_url.lower() in blacklist_urls
+            or site_url.lower() in existing_sites_urls
+        ):
             continue
 
         # 提取根域名
@@ -1935,22 +1942,22 @@ def arl_site_to_bbdb(
                 "create_time": datetime.now(),
                 "update_time": datetime.now(),
             }
-            sites_to_insert.append(site_document)
+            new_sites_to_bbdb.append(site_document)
 
     # 批量插入站点到bbdb的site表
-    if sites_to_insert:
-        # log_message(sites_to_insert)
-        db.site.insert_many(sites_to_insert)
-        inserted_sites_count = len(sites_to_insert)
+    if new_sites_to_bbdb:
+        db.site.insert_many(new_sites_to_bbdb)
+        inserted_sites_count = len(new_sites_to_bbdb)
 
     # 打印成功插入的站点数量
-    log_message(f"成功插入{inserted_sites_count}个站点到bbdb。")
+    if inserted_sites_count > 0:
+        log_message(f"成功插入{inserted_sites_count}个站点到bbdb")
 
 
 def main():
     # 检查环境变量
     if not check_env_vars():
-        sys.exit("环境变量检查失败。")
+        sys.exit("环境变量检查失败")
 
     # 从环境变量获取参数
     arl_url = os.environ.get("BBDB_ARL_URL")
@@ -1967,7 +1974,7 @@ def main():
     client = MongoClient(mongodb_uri)
     db = client["bbdb"]
 
-    global new_domains_to_arl, new_domains_to_bbdb, new_ips_to_bbdb
+    global new_domains_to_arl, new_domains_to_bbdb, new_ips_to_bbdb, new_sites_to_bbdb
     new_domains_to_arl = set()
     new_domains_to_bbdb = set()
     new_ips_to_bbdb = set()
@@ -2050,13 +2057,16 @@ def main():
     arl_all_scopes = get_arl_scopes_pages(token, arl_url)
 
     # 7. IP资产同步。已取消，原始arl版本在请求资产页面能直接得到部分ip，现在资产页面只有初始设置时的域名字段，且不会更新，导致了上一步双向同步域名都改变为下载全部并匹配的方式，ip不能通过此方式实现
+
+    # 8. 站点site资产同步，下载全部数据后解析找到对应资产分组
+    log_message("8-准备url导入bbdb任务")
     arl_site_to_bbdb(
         db, arl_url, token, businesses, root_domains, sub_domains, blacklists, sites
     )
-    # 8. 站点site资产同步，下载全部数据后解析找到对应资产分组
+    log_message("8-url导入bbdb任务处理完毕")
 
     # 9.监控任务触发。配置好资产分组和对应的策略后，批量为新增的策略和资产分组触发监控和站点监控任务。
-    log_message("9-刷新arl资产，准备批量添加监控任务.")
+    log_message("9-刷新arl资产，准备批量添加监控任务")
     # 重新获取策略列表
     arl_all_policies = get_arl_all_policies(arl_url, token)
     arl_all_scopes = get_arl_scopes_pages(token, arl_url)
@@ -2078,7 +2088,7 @@ def main():
             add_site_monitor(token, arl_url, scope_id)  # 添加站点更新监控周期任务
         else:
             log_message(f"No policy found for scope_id {scope_id}")
-    log_message("9-arl监控任务添加完毕,统计数据，脚本结束。")
+    log_message("9-arl监控任务添加完毕,统计数据，脚本结束")
 
     # 10. 在每次脚本运行结束后，统计双方互相同步的新资产分组数量，新同步的子域名数量、IP数量。
     log_message(f"以下为统计信息\n{'-'*70}")
@@ -2086,7 +2096,8 @@ def main():
     log_message(f"bbdb 添加的新分组数量： {len(arl_only_asset_scopes)}")
     log_message(f"arl 添加的新域名数量：{len(new_domains_to_arl)}")
     log_message(f"bbdb 添加的新域名数量：{len(new_domains_to_bbdb)}")
-    log_message(f"bbdb 添加的新 ip 数量：{len(new_ips_to_bbdb)}")
+    # log_message(f"bbdb 添加的新 ip 数量：{len(new_ips_to_bbdb)}")
+    log_message(f"bbdb 添加的新 url 数量：{len(new_sites_to_bbdb)}")
 
 
 if __name__ == "__main__":
