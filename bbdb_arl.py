@@ -135,7 +135,6 @@ def insert_new_group_to_arl(
     for business_name in business_only_asset_scopes:
         # 检查资产分组是否已经存在
         if business_name in arl_asset_scope_names:
-            # log_message(资产分组 {business_name} 已经存在，跳过插入")
             continue
         # 获取对应的 business_id
         business_id = next(
@@ -179,7 +178,6 @@ def add_asset_scope(token, arl_url, name, scope):
 
     # 检查资产分组是否已经存在
     if name in arl_asset_scope_names:
-        # log_message(资产分组 {name} 已经存在，跳过添加")
         return
 
     scope_domains = scope.split(",")
@@ -194,7 +192,7 @@ def add_asset_scope(token, arl_url, name, scope):
             )
             response.raise_for_status()
         except requests.RequestException as e:
-            print(e, "出错了，请排查")
+            log_message(e, "出错了，请排查")
             return None
 
         # 解析响应内容
@@ -276,14 +274,14 @@ def download_arl_assets(arl_url, token, asset_type):
                 response.raise_for_status()
                 return response
             except requests.RequestException as e:
-                print(f"请求失败，尝试次数 {attempt + 1}/{max_attempts}: {e}")
+                log_message(f"请求失败，尝试次数 {attempt + 1}/{max_attempts}: {e}")
                 if attempt == max_attempts - 1:
                     return None  # 最后一次尝试仍然失败，返回None
 
     # 发送初始请求获取总数量
     response = try_request(initial_url)
     if not response:
-        print("无法获取资产总量，终止操作")
+        log_message("无法获取资产总量，终止操作")
         return []
     data = response.json()
     total = data.get("total", 0)
@@ -297,7 +295,7 @@ def download_arl_assets(arl_url, token, asset_type):
         export_url = f"{export_url_template}&page={page}"
         export_response = try_request(export_url)
         if not export_response:
-            print(f"跳过页面 {page}，因为请求失败")
+            log_message(f"跳过页面 {page}，因为请求失败")
             continue
 
         # 将返回的文本内容按行分割，添加到集合中去重
@@ -1453,7 +1451,7 @@ def add_policy(arl_url, token, policy_name, scope_id):
         )
         response.raise_for_status()
     except requests.RequestException as e:
-        print(e, "出错了，请排查")
+        log_message(e, "出错了，请排查")
         return None
 
     # 检查响应是否有效
@@ -1485,7 +1483,7 @@ def get_arl_all_policies(arl_url, token):
             response.raise_for_status()
             response_data = response.json()
         except requests.RequestException as e:
-            print(e, "出错了，请排查")
+            log_message(e, "出错了，请排查")
             break
         except ValueError:
             log_message("无法解析响应内容")
@@ -1594,7 +1592,7 @@ def check_scheduler_exists(token, arl_url, domain):
         )
         response.raise_for_status()
     except requests.RequestException as e:
-        print(e, "出错了，请排查")
+        log_message(e, "出错了，请排查")
         return False
 
     response_data = response.json()
@@ -1622,7 +1620,73 @@ def add_site_monitor(token, arl_url, scope_id):
         )
         response.raise_for_status()
     except requests.RequestException as e:
-        print(e, "出错了，请排查")
+        log_message(e, "出错了，请排查")
+
+
+def prepare_domains_for_arl_insertion(
+    domains_to_arl, businesses, root_domains_set, arl_all_scopes
+):
+    # 准备从bbdb插入arl域名中的数据结构
+    businesses_ids = {str(business["_id"]): business for business in businesses}
+    # 使用字典来确保每个资产分组只处理一次
+    insertion_data = {}
+
+    # 遍历需要插入ARL的域名
+    for domain in list(domains_to_arl):  # 创建一个副本以避免在迭代中修改原始列表
+        parts = domain.split(".")
+        for i in range(2, min(4, len(parts) + 1)):
+            root_domain_candidate = ".".join(parts[-i:])
+            if root_domain_candidate in root_domains_set:
+                root_domain = root_domains_set[root_domain_candidate]
+                business_id = str(root_domain["business_id"])
+                business = businesses_ids.get(business_id)
+                if business:
+                    business_name = business["name"]
+                    # 查找对应的ARL资产分组ID
+                    scope_id = next(
+                        (
+                            scope["_id"]
+                            for scope in arl_all_scopes
+                            if scope["name"] == business_name
+                        ),
+                        None,
+                    )
+                    if scope_id:
+                        # 如果资产分组已存在于insertion_data中，则直接添加域名到对应的scope中
+                        if scope_id in insertion_data:
+                            insertion_data[scope_id]["scope"].add(domain)
+                        else:
+                            # 收集同一资产分组下的所有域名
+                            related_domains = set(
+                                [
+                                    d
+                                    for d in domains_to_arl
+                                    if d.endswith(root_domain_candidate)
+                                ]
+                            )
+                            # 初始化资产分组条目
+                            insertion_data[scope_id] = {
+                                "scope_id": scope_id,
+                                "business_name": business_name,
+                                "scope": related_domains,
+                            }
+                        # 从domains_to_arl中删除已处理的域名
+                        domains_to_arl = [
+                            d for d in domains_to_arl if d not in related_domains
+                        ]
+                        break
+
+    # 将insertion_data字典转换为所需的列表格式，并将scope集合转换为字符串
+    final_data = [
+        {
+            "scope_id": v["scope_id"],
+            "business_name": v["business_name"],
+            "scope": ",".join(v["scope"]),
+        }
+        for v in insertion_data.values()
+    ]
+
+    return final_data
 
 
 def sync_domain_assets(
@@ -1636,39 +1700,66 @@ def sync_domain_assets(
     sub_domains,
     blacklists,
 ):
+    global new_domains_to_arl, new_domains_to_bbdb
     # 加载bbdb数据到内存
+
     businesses_ids = {business["_id"]: business for business in businesses}
     root_domains_set = {
         root_domain["name"]: root_domain for root_domain in root_domains
     }
     sub_domains_set = {sub_domain["name"]: sub_domain for sub_domain in sub_domains}
+    blacklist_domains = {
+        domain["name"].lower()
+        for domain in blacklists
+        if domain["type"] == "sub_domain"
+    }
 
-    # 从ARL下载域名数据
+    # arl域名处理部分
+    arl_domains = set()
+    # 从arl_all_scopes中提取并处理域名
+    for asset_scope in arl_all_scopes:
+        if "scope_array" in asset_scope and asset_scope["scope_array"]:
+            # 直接处理列表中的每个域名，转换为小写并去除末尾的点
+            for domain in asset_scope["scope_array"]:
+                processed_domain = domain.lower().rstrip(".")
+                arl_domains.add(processed_domain)
+    # 下载arl_domain_data并添加到一起
     arl_domain_data = download_arl_assets(arl_url, token, "domain")
+    for domain in arl_domain_data:
+        processed_domain = domain.lower().rstrip(".")
+        arl_domains.add(processed_domain)
 
-    if arl_domain_data:
-        log_message("5-arl 全量域名下载完毕")
-
+    if arl_domains:
         # 数据处理
         bbdb_domains = set(root_domains_set.keys()).union(sub_domains_set)
+        bbdb_domains = set(
+            [
+                domain.lower().strip(".")
+                for domain in bbdb_domains
+                if not re.match(r"\d+\.\d+\.\d+\.\d+", domain)  # 排除IPv4地址
+                and ":" not in domain  # 排除IPv6地址
+                and domain not in blacklist_domains  # 排除黑名单中的域名
+            ]
+        )  # 去除IP、特殊字符和黑名单域名
         arl_domains = set(
             [
-                line.strip(".")
-                for line in arl_domain_data
-                if not re.match(r"\d+\.\d+\.\d+\.\d+", line)
+                line.lower().strip(".")
+                for line in arl_domains
+                if not re.match(r"\d+\.\d+\.\d+\.\d+", line)  # 排除IPv4地址
+                and ":" not in line  # 排除IPv6地址
             ]
         )  # 去除IP和特殊字符
 
         # 需要插入bbdb的域名
-        domains_to_bbdb = arl_domains - bbdb_domains
+        new_domains_to_bbdb = arl_domains - bbdb_domains
         # 需要插入ARL的域名
-        domains_to_arl = bbdb_domains - arl_domains
+        new_domains_to_arl = bbdb_domains - arl_domains
 
         # 先插入bbdb
-        if domains_to_bbdb:
+        if new_domains_to_bbdb:
             # 准备批量插入的列表
             sub_domains_to_add = []
-            for domain in domains_to_bbdb:
+            for domain in new_domains_to_bbdb:
                 if (
                     domain.count(".") == 0
                     or domain.count(".") == 1
@@ -1711,100 +1802,68 @@ def sync_domain_assets(
                 log_message(f"有 {len(sub_domains_to_add)} 个新域名待插入 bbdb，请稍等")
                 db.sub_domain.insert_many(sub_domains_to_add)
             else:
-                log_message("没有找到需要插入 bbdb 的新域名")
+                log_message("5-没有找到需要插入 bbdb 的新域名")
         else:
-            log_message("没有需要插入到 bbdb 的新域名")
+            log_message("5-没有需要插入到 bbdb 的新域名")
 
         # 再插入arl
-        if domains_to_arl:
-            log_message(f"5-需要插入 arl 的域名个数{len(domains_to_arl)}")
-            exit(-1)
-            processed_domains = set()  # 用于记录已处理的域名
-
-            for domain in list(
-                domains_to_arl
-            ):  # 创建domains_to_arl的副本以避免在迭代中修改
-                if domain in processed_domains:
-                    continue  # 如果域名已处理，则跳过
-
-                # 从域名中提取可能的根域名
-                parts = domain.split(".")
-                root_domain_name = None
-                for i in range(
-                    2, min(4, len(parts) + 1)
-                ):  # 尝试从右到左第二个点到第三个点
-                    candidate = ".".join(parts[-i:])
-                    if candidate in root_domains_set:
-                        root_domain_name = candidate
-                        break
-
-                if not root_domain_name:
-                    continue  # 如果没有找到对应的根域名，跳过当前域名
-
-                # 查找对应的business_id和business_name
-                root_domain = root_domains_set[root_domain_name]
-                business_id = ObjectId(root_domain["business_id"])
-                business = businesses_ids.get(business_id)
-                if not business:
-                    continue  # 如果没有找到对应的业务，跳过当前域名
-
-                business_name = business["name"]
-                # 查找对应的ARL资产分组ID
-                scope_id = None
-                for asset_scope in arl_all_scopes:
-                    if asset_scope["name"] == business_name:
-                        scope_id = asset_scope["_id"]
-                        break
-
-                if not scope_id:
-                    continue  # 如果没有找到对应的资产分组ID，跳过当前域名
-
-                # 收集同一资产分组下的所有域名
-                related_domains = [
-                    d for d in domains_to_arl if d.endswith(root_domain_name)
-                ]
-                scope = ",".join(related_domains)  # 将所有相关域名使用逗号连接
-
-                if not scope:
-                    continue
-
-                # 添加到ARL的资产分组中
-                data = {
-                    "scope_id": scope_id,
-                    "scope": scope,
-                }
+        if new_domains_to_arl:
+            log_message(f"5-需要插入 arl 的域名个数{len(new_domains_to_arl)}")
+            log_message(new_domains_to_arl)
+            insertion_data = prepare_domains_for_arl_insertion(
+                new_domains_to_arl, businesses, root_domains_set, arl_all_scopes
+            )
+            if insertion_data:
                 headers = {
                     "Token": token,
                     "Content-Type": "application/json; charset=UTF-8",
                 }
-                try:
-                    response = requests.post(
-                        arl_url + "/api/asset_scope/add/",
-                        headers=headers,
-                        json=data,
-                        verify=False,
-                    )
-                    response.raise_for_status()
-                except requests.RequestException as e:
-                    print(e, "出错了，请排查")
-                if not response.status_code == 200:
-                    log_message(f"Failed to add domains to ARL asset scope {scope_id}")
 
-                # 找到对应的策略
-                policy = next(
-                    (
-                        policy
-                        for policy in arl_all_policies
-                        if policy["policy"]["scope_config"]["scope_id"] == scope_id
-                    ),
-                    None,
-                )
-                if policy is not None:
-                    policy_id = policy["_id"]
-                    # 触发监控任务
-                    for domain in related_domains:
-                        add_scheduler(token, arl_url, scope_id, domain, policy_id)
-            log_message(f"已完成 {domains_to_arl} 个新域名插入 arl 并触发了监控任务")
+                for item in insertion_data:
+                    scope_id = item["scope_id"]
+                    business_name = item["business_name"]
+                    domains = item["scope"].split(",")  # 将scope字符串分割成域名列表
+
+                    # 添加到ARL的资产分组中
+                    data = {
+                        "scope_id": scope_id,
+                        "scope": item["scope"],
+                    }
+
+                    try:
+                        response = requests.post(
+                            arl_url + "/api/asset_scope/add/",
+                            headers=headers,
+                            json=data,
+                            verify=False,
+                        )
+                        response.raise_for_status()
+                        # 检查响应状态码
+                        if response.status_code == 200:
+                            log_message(
+                                f"成功添加 {len(domains)} 个域名到 ARL 资产分组 {business_name}"
+                            )
+                        else:
+                            log_message(
+                                f"Failed to add domains to ARL asset scope {scope_id}"
+                            )
+                    except requests.RequestException as e:
+                        log_message(e, "出错了，请排查")
+
+                    # 找到对应的策略并触发监控任务
+                    policy = next(
+                        (
+                            policy
+                            for policy in arl_all_policies
+                            if policy["policy"]["scope_config"]["scope_id"] == scope_id
+                        ),
+                        None,
+                    )
+                    if policy is not None:
+                        policy_id = policy["_id"]
+                        for domain in domains:
+                            # 假设 add_scheduler 是一个已定义的函数，用于添加监控任务
+                            add_scheduler(token, arl_url, scope_id, domain, policy_id)
         else:
             log_message("没有需要插入到 arl 的新域名")
     else:
@@ -1996,6 +2055,7 @@ def main():
     log_message("8-arl监控任务添加完毕,统计数据，脚本结束。")
 
     # 9. 在每次脚本运行结束后，统计双方互相同步的新资产分组数量，新同步的子域名数量、IP数量。
+    log_message(f"以下为统计信息\n{'-'*70}")
     log_message(f"arl 添加的新分组数量： {len(business_only_asset_scopes)}")
     log_message(f"bbdb 添加的新分组数量： {len(arl_only_asset_scopes)}")
     log_message(f"arl 添加的新域名数量：{len(new_domains_to_arl)}")
