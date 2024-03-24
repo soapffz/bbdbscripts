@@ -7,17 +7,7 @@ new Env('bbdb-ARL联动');
 创建日期: 2023年10月1日
 最后修改日期: 2024年3月22日
 
-本脚本实现了bbdb和ARL之间的联动，主要包括以下步骤：
-
-1. 从bbdb全量读取"国内-"开头的business，root_domain,sub_domain数据，并登录ARL获取token。
-2. 获取ARL中资产分组的名称，并与business中的name进行比较，确定需要互相插入的资产分组。
-3. 首先进行bbdb向ARL进行新分组的插入，插入根域名和子域名（合并去重，保持原有顺序，根域名在先），scope_type为domain。
-4. 完成后，再进行ARL向bbdb的插入。对于每一个只在 ARL 资产分组中的 name，添加到 bbdb 中。
-5. 扫描策略配置。为ARL中没有对应扫描策略的资产分组，添加与其资产分组名称相同的扫描策略.
-6. 域名资产同步。对双向相同的分组中的域名资产进行双向同步，bbdb侧从内存中读取比较后，提取绝对根域名并对比root_domain表，子域名对比sub_domain表，ARL侧则将新增子域名直接插入资产分组的资产范围中后，将新增的域名也启动监控任务。
-7. IP资产同步。对双向相同的分组中的IP资产进行双向同步，bbdb侧从内存中读取比较后，提取IP并对比ip表，ARL侧则将新增IP直接插入资产分组的资产范围中后，将新增的IP也启动监控任务。
-8. 监控任务触发。配置好资产分组和对应的策略后，批量为新增的策略和资产分组触发监控和站点监控任务。
-9. 在每次脚本运行结束后，统计双方互相同步的新资产分组数量，新同步的子域名数量、IP数量。
+本脚本实现了bbdb和ARL之间的联动，详细步骤以main函数中注释为准
 
 """
 
@@ -26,6 +16,7 @@ import requests
 import json
 import sys
 import urllib3
+from urllib.parse import urlparse
 import re
 from datetime import datetime, timezone, timedelta
 import os
@@ -1809,7 +1800,6 @@ def sync_domain_assets(
         # 再插入arl
         if new_domains_to_arl:
             log_message(f"5-需要插入 arl 的域名个数{len(new_domains_to_arl)}")
-            log_message(new_domains_to_arl)
             insertion_data = prepare_domains_for_arl_insertion(
                 new_domains_to_arl, businesses, root_domains_set, arl_all_scopes
             )
@@ -1870,56 +1860,91 @@ def sync_domain_assets(
         log_message("下载 arl 域名数据失败或者为空")
 
 
-def sync_ip_assets(db, arl_all_scopes, businesses):
-    global new_ips_to_bbdb
-    for asset_scope in arl_all_scopes:
-        scope_id = asset_scope["_id"]
-        items = asset_scope["items"] if "items" in asset_scope else [asset_scope]
-        arl_ips = set(
-            item["record"][0]
-            for item in items
-            if "type" in item
-            and item["type"] == "A"
-            and "record" in item
-            and item["record"]
-        )
-        # 从bbdb获取对应的IP
-        business_id = next(
-            (
-                str(business["_id"])  # 将 ObjectId 转换为字符串
-                for business in businesses
-                if business["name"] == asset_scope["name"]
-            ),
-            None,
-        )
-        if business_id is None:
+def arl_site_to_bbdb(
+    db, arl_url, token, businesses, root_domains, sub_domains, blacklists, sites
+):
+    # 将root_domains和sub_domains列表转换为字典
+    root_domains = {root_domain["name"]: root_domain for root_domain in root_domains}
+    sub_domains = {sub_domain["name"]: sub_domain for sub_domain in sub_domains}
+
+    # 使用download_arl_assets下载类型为site的数据并去重
+    arl_sites_data = set(download_arl_assets(arl_url, token, "site"))
+
+    # 构建黑名单URL集合
+    blacklist_urls = {
+        blacklist["name"].lower()
+        for blacklist in blacklists
+        if blacklist["type"] == "url"
+    }
+
+    # 准备插入的站点数据列表
+    sites_to_insert = []
+    inserted_sites_count = 0
+
+    for site_url in arl_sites_data:
+        # 去除黑名单中的URL
+        if site_url.lower() in blacklist_urls:
             continue
 
-        bbdb_ips = set(
-            ip["ip"] for ip in db["ip"].find({"business_id": ObjectId(business_id)})
-        )
+        # 提取根域名
+        parsed_url = urlparse(site_url)
+        hostname = parsed_url.hostname
+        if hostname is None:
+            continue
+        hostname = hostname.lower().rstrip(".")
+        # 去除端口号
+        hostname = re.sub(r":\d+$", "", hostname)
+        # 提取根域名
+        parts = hostname.split(".")
+        root_domain_name = ".".join(parts[-2:]) if len(parts) > 1 else hostname
 
-        # 找出需要添加到bbdb的IP
-        new_ips_to_bbdb = arl_ips - bbdb_ips
-        if new_ips_to_bbdb:
-            # 添加到bbdb的ip表中
-            db["ip"].insert_many(
-                [
-                    {
-                        "ip": ip,
-                        "business_id": ObjectId(
-                            business_id
-                        ),  # 确保 business_id 转换为 ObjectId
-                        "notes": "from arl",
-                        "create_time": datetime.now(),
-                        "update_time": datetime.now(),
-                    }
-                    for ip in new_ips_to_bbdb
-                ]
-            )
-            log_message(
-                f"Added {len(new_ips_to_bbdb)} IPs to bbdb business {business_id}"
-            )
+        # 在root_domains中查找
+        root_domain_obj = root_domains.get(root_domain_name)
+        if root_domain_obj:
+            root_domain_id = str(root_domain_obj["_id"])
+            business_id = root_domain_obj["business_id"]
+            # 在sub_domains中查找
+            sub_domain_obj = sub_domains.get(hostname)
+            if sub_domain_obj:
+                sub_domain_id = str(sub_domain_obj["_id"])
+            else:
+                # log_message(f"发现了意料之外的子域名：{site_url}")
+                continue
+
+            # 构造站点文档并添加到列表
+            site_document = {
+                "name": site_url,
+                "status": "",
+                "title": "",
+                "hostname": hostname,
+                "ip": "",
+                "http_server": "",
+                "body_length": "",
+                "headers": "",
+                "keywords": "",
+                "applications": [],
+                "applications_categories": [],
+                "applications_types": [],
+                "applications_levels": [],
+                "application_manufacturer": [],
+                "fingerprint": [],
+                "root_domain_id": root_domain_id,
+                "sub_domain_id": sub_domain_id,
+                "business_id": business_id,
+                "notes": "set by soapffz with arl",
+                "create_time": datetime.now(),
+                "update_time": datetime.now(),
+            }
+            sites_to_insert.append(site_document)
+
+    # 批量插入站点到bbdb的site表
+    if sites_to_insert:
+        # log_message(sites_to_insert)
+        db.site.insert_many(sites_to_insert)
+        inserted_sites_count = len(sites_to_insert)
+
+    # 打印成功插入的站点数量
+    log_message(f"成功插入{inserted_sites_count}个站点到bbdb。")
 
 
 def main():
@@ -2018,19 +2043,20 @@ def main():
     )
     log_message("6-域名资产双向同步完成")
 
-    # 刷新bbdb
-    log_message("6-等待刷新bbdb")
+    # 刷新bbdb和arl资产
     businesses, root_domains, sub_domains, sites, ips, blacklists = get_bbdb_data(
         db, name_keyword
     )
-    log_message("6-刷新bbdb完成")
+    arl_all_scopes = get_arl_scopes_pages(token, arl_url)
 
-    # 7. IP资产同步。对双向相同的分组中的IP资产进行双向同步，bbdb侧从内存中读取比较后，提取IP并对比ip表，ARL侧则将新增IP直接插入资产分组的资产范围中后，将新增的IP也启动监控任务。
-    sync_ip_assets(db, arl_all_scopes, businesses)
-    log_message("7-ip资产导入bbdb完成,开始添加arl监控任务")
+    # 7. IP资产同步。已取消，原始arl版本在请求资产页面能直接得到部分ip，现在资产页面只有初始设置时的域名字段，且不会更新，导致了上一步双向同步域名都改变为下载全部并匹配的方式，ip不能通过此方式实现
+    arl_site_to_bbdb(
+        db, arl_url, token, businesses, root_domains, sub_domains, blacklists, sites
+    )
+    # 8. 站点site资产同步，下载全部数据后解析找到对应资产分组
 
-    # 8.监控任务触发。配置好资产分组和对应的策略后，批量为新增的策略和资产分组触发监控和站点监控任务。
-    log_message("8-刷新arl资产，准备批量添加监控任务.")
+    # 9.监控任务触发。配置好资产分组和对应的策略后，批量为新增的策略和资产分组触发监控和站点监控任务。
+    log_message("9-刷新arl资产，准备批量添加监控任务.")
     # 重新获取策略列表
     arl_all_policies = get_arl_all_policies(arl_url, token)
     arl_all_scopes = get_arl_scopes_pages(token, arl_url)
@@ -2052,9 +2078,9 @@ def main():
             add_site_monitor(token, arl_url, scope_id)  # 添加站点更新监控周期任务
         else:
             log_message(f"No policy found for scope_id {scope_id}")
-    log_message("8-arl监控任务添加完毕,统计数据，脚本结束。")
+    log_message("9-arl监控任务添加完毕,统计数据，脚本结束。")
 
-    # 9. 在每次脚本运行结束后，统计双方互相同步的新资产分组数量，新同步的子域名数量、IP数量。
+    # 10. 在每次脚本运行结束后，统计双方互相同步的新资产分组数量，新同步的子域名数量、IP数量。
     log_message(f"以下为统计信息\n{'-'*70}")
     log_message(f"arl 添加的新分组数量： {len(business_only_asset_scopes)}")
     log_message(f"bbdb 添加的新分组数量： {len(arl_only_asset_scopes)}")
