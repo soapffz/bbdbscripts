@@ -152,8 +152,9 @@ def ensure_unique_name():
     collections_to_update = db.list_collection_names()
     for collection_name in collections_to_update:
         collection = db[collection_name]
-        # 使用聚合管道查找重复的name值
+        # 使用聚合管道查找重复的非空name值
         pipeline = [
+            {"$match": {"name": {"$ne": None, "$ne": ""}}}, # 过滤掉name为空的文档
             {"$group": {
                 "_id": "$name",
                 "uniqueIds": {"$push": "$_id"},
