@@ -5,7 +5,7 @@ new Env('bbdb-ARL联动');
 文件名: bbdb_arl.py
 作者: soapffz
 创建日期: 2023年10月1日
-最后修改日期: 2024年3月24日
+最后修改日期: 2024年3月25日
 
 本脚本实现了bbdb和ARL之间的联动，详细步骤以main函数中注释为准
 
@@ -198,7 +198,7 @@ def add_asset_scope(token, arl_url, name, scope):
         else:
             invalid_domain = response_data.get("data", {}).get("scope")
             if invalid_domain:
-                log_message(f"无效域名: {invalid_domain}, 将被移除")
+                # log_message(f"无效域名: {invalid_domain}, 将被移除")
                 scope_domains.remove(invalid_domain)
             else:
                 log_message(f"未知错误: {response_data.get('message')}")
@@ -469,117 +469,72 @@ def add_policy(arl_url, token, policy_name, scope_id):
                 "domain_brute_type": "big",
             },
             "ip_config": {
-                "port_scan": True,
+                "port_scan": False,
                 "service_detection": True,
-                "os_detection": True,
+                "os_detection": False,
                 "ssl_cert": True,
                 "skip_scan_cdn_ip": True,
-                "port_scan_type": "top1000",
+                "port_scan_type": "test",
                 "port_custom": "",
                 "host_timeout_type": "default",
                 "host_timeout": 0,
-                "port_parallelism": 16,
-                "port_min_rate": 30,
+                "port_parallelism": 32,
+                "port_min_rate": 60,
             },
             "npoc_service_detection": True,
             "site_config": {
                 "site_identify": True,
                 "search_engines": True,
                 "site_spider": True,
-                "site_capture": False,
+                "site_capture": True,
                 "nuclei_scan": True,
                 "web_info_hunter": True,
             },
             "file_leak": True,
             "poc_config": [
                 {
-                    "plugin_name": "Onlyoffice_noauth",
-                    "vul_name": "Onlyoffice 未授权漏洞",
+                    "plugin_name": "WEB_INF_WEB_xml_leak",
+                    "vul_name": "WEB-INF/web.xml 文件泄漏",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Solr_noauth",
-                    "vul_name": "Apache solr 未授权访问",
+                    "plugin_name": "Ueditor_SSRF",
+                    "vul_name": "Ueditor SSRF 漏洞",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Actuator_noauth_bypass_waf",
-                    "vul_name": "Actuator API 未授权访问 (绕过WAF)",
+                    "plugin_name": "Gitlab_Username_Leak",
+                    "vul_name": "Gitlab 用户名泄漏",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Redis_noauth",
-                    "vul_name": "Redis 未授权访问",
+                    "plugin_name": "Django_Debug_Info",
+                    "vul_name": "Django 开启调试模式",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Actuator_noauth",
-                    "vul_name": "Actuator API 未授权访问",
+                    "plugin_name": "Ueditor_Store_XSS",
+                    "vul_name": "Ueditor 存储 XSS 漏洞",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Memcached_noauth",
-                    "vul_name": "Memcached 未授权访问",
+                    "plugin_name": "Adminer_PHP_Identify",
+                    "vul_name": "发现 Adminer.php",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Actuator_httptrace_noauth",
-                    "vul_name": "Actuator httptrace API 未授权访问",
+                    "plugin_name": "XXL_Job_Admin_Identify",
+                    "vul_name": "发现 xxl-job-admin",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Elasticsearch_noauth",
-                    "vul_name": "Elasticsearch 未授权访问",
+                    "plugin_name": "Harbor_Identify",
+                    "vul_name": "发现 Harbor API",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Headless_remote_API_noauth",
-                    "vul_name": "Headless Remote API 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "ZooKeeper_noauth",
-                    "vul_name": "ZooKeeper 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Druid_noauth",
-                    "vul_name": "Druid 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Mongodb_noauth",
-                    "vul_name": "Mongodb 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Apollo_Adminservice_noauth",
-                    "vul_name": "apollo-adminservice 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "DockerRemoteAPI_noauth",
-                    "vul_name": "Docker Remote API 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Nacos_noauth",
-                    "vul_name": "Nacos 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Hadoop_YARN_RPC_noauth",
-                    "vul_name": "Hadoop YARN RCP 未授权访问漏洞",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Kibana_noauth",
-                    "vul_name": "Kibana 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "FinereportV10_Identify",
-                    "vul_name": "发现帆软 FineReport V10",
+                    "plugin_name": "Swagger_Json_Identify",
+                    "vul_name": "发现 Swagger 文档接口",
                     "enable": True,
                 },
                 {
@@ -588,13 +543,23 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Oracle_Weblogic_Console_Identify",
-                    "vul_name": "发现 Oracle Weblogic 控制台",
+                    "plugin_name": "Grafana_Identify",
+                    "vul_name": "发现 Grafana",
                     "enable": True,
                 },
                 {
                     "plugin_name": "Clickhouse_REST_API_Identify",
                     "vul_name": "发现 Clickhouse REST API",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Apache_Ofbiz_Identify",
+                    "vul_name": "发现 Apache Ofbiz",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "vcenter_identify",
+                    "vul_name": "发现VMware vCenter",
                     "enable": True,
                 },
                 {
@@ -608,18 +573,8 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
-                    "plugin_name": "XXL_Job_Admin_Identify",
-                    "vul_name": "发现 xxl-job-admin",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "vcenter_identify",
-                    "vul_name": "发现VMware vCenter",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Any800_Identify",
-                    "vul_name": "发现 Any800全渠道智能客服云平台",
+                    "plugin_name": "Oracle_Weblogic_Console_Identify",
+                    "vul_name": "发现 Oracle Weblogic 控制台",
                     "enable": True,
                 },
                 {
@@ -628,23 +583,13 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Adminer_PHP_Identify",
-                    "vul_name": "发现 Adminer.php",
+                    "plugin_name": "Any800_Identify",
+                    "vul_name": "发现 Any800全渠道智能客服云平台",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Harbor_Identify",
-                    "vul_name": "发现 Harbor API",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Apache_Apereo_CAS_Identify",
-                    "vul_name": "发现 Apache Apereo Cas",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Swagger_Json_Identify",
-                    "vul_name": "发现 Swagger 文档接口",
+                    "plugin_name": "FinereportV10_Identify",
+                    "vul_name": "发现帆软 FineReport V10",
                     "enable": True,
                 },
                 {
@@ -653,113 +598,13 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Grafana_Identify",
-                    "vul_name": "发现 Grafana",
-                    "enable": True,
-                },
-                {
                     "plugin_name": "Finereport_Identify",
                     "vul_name": "发现帆软 FineReport",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Apache_Ofbiz_Identify",
-                    "vul_name": "发现 Apache Ofbiz",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Django_Debug_Info",
-                    "vul_name": "Django 开启调试模式",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Gitlab_Username_Leak",
-                    "vul_name": "Gitlab 用户名泄漏",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Ueditor_SSRF",
-                    "vul_name": "Ueditor SSRF 漏洞",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "WEB_INF_WEB_xml_leak",
-                    "vul_name": "WEB-INF/web.xml 文件泄漏",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Ueditor_Store_XSS",
-                    "vul_name": "Ueditor 存储 XSS 漏洞",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Onlyoffice_noauth",
-                    "vul_name": "Onlyoffice 未授权漏洞",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Solr_noauth",
-                    "vul_name": "Apache solr 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Actuator_noauth_bypass_waf",
-                    "vul_name": "Actuator API 未授权访问 (绕过WAF)",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Redis_noauth",
-                    "vul_name": "Redis 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Actuator_noauth",
-                    "vul_name": "Actuator API 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Memcached_noauth",
-                    "vul_name": "Memcached 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Actuator_httptrace_noauth",
-                    "vul_name": "Actuator httptrace API 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Elasticsearch_noauth",
-                    "vul_name": "Elasticsearch 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Headless_remote_API_noauth",
-                    "vul_name": "Headless Remote API 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "ZooKeeper_noauth",
-                    "vul_name": "ZooKeeper 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Druid_noauth",
-                    "vul_name": "Druid 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Mongodb_noauth",
-                    "vul_name": "Mongodb 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Apollo_Adminservice_noauth",
-                    "vul_name": "apollo-adminservice 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "DockerRemoteAPI_noauth",
-                    "vul_name": "Docker Remote API 未授权访问",
+                    "plugin_name": "Apache_Apereo_CAS_Identify",
+                    "vul_name": "发现 Apache Apereo Cas",
                     "enable": True,
                 },
                 {
@@ -773,13 +618,48 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Kibana_noauth",
-                    "vul_name": "Kibana 未授权访问",
+                    "plugin_name": "WEB_INF_WEB_xml_leak",
+                    "vul_name": "WEB-INF/web.xml 文件泄漏",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "FinereportV10_Identify",
-                    "vul_name": "发现帆软 FineReport V10",
+                    "plugin_name": "Ueditor_SSRF",
+                    "vul_name": "Ueditor SSRF 漏洞",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Gitlab_Username_Leak",
+                    "vul_name": "Gitlab 用户名泄漏",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Django_Debug_Info",
+                    "vul_name": "Django 开启调试模式",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Ueditor_Store_XSS",
+                    "vul_name": "Ueditor 存储 XSS 漏洞",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Adminer_PHP_Identify",
+                    "vul_name": "发现 Adminer.php",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "XXL_Job_Admin_Identify",
+                    "vul_name": "发现 xxl-job-admin",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Harbor_Identify",
+                    "vul_name": "发现 Harbor API",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Swagger_Json_Identify",
+                    "vul_name": "发现 Swagger 文档接口",
                     "enable": True,
                 },
                 {
@@ -788,13 +668,23 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Oracle_Weblogic_Console_Identify",
-                    "vul_name": "发现 Oracle Weblogic 控制台",
+                    "plugin_name": "Grafana_Identify",
+                    "vul_name": "发现 Grafana",
                     "enable": True,
                 },
                 {
                     "plugin_name": "Clickhouse_REST_API_Identify",
                     "vul_name": "发现 Clickhouse REST API",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Apache_Ofbiz_Identify",
+                    "vul_name": "发现 Apache Ofbiz",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "vcenter_identify",
+                    "vul_name": "发现VMware vCenter",
                     "enable": True,
                 },
                 {
@@ -808,18 +698,8 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
-                    "plugin_name": "XXL_Job_Admin_Identify",
-                    "vul_name": "发现 xxl-job-admin",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "vcenter_identify",
-                    "vul_name": "发现VMware vCenter",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Any800_Identify",
-                    "vul_name": "发现 Any800全渠道智能客服云平台",
+                    "plugin_name": "Oracle_Weblogic_Console_Identify",
+                    "vul_name": "发现 Oracle Weblogic 控制台",
                     "enable": True,
                 },
                 {
@@ -828,23 +708,13 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Adminer_PHP_Identify",
-                    "vul_name": "发现 Adminer.php",
+                    "plugin_name": "Any800_Identify",
+                    "vul_name": "发现 Any800全渠道智能客服云平台",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Harbor_Identify",
-                    "vul_name": "发现 Harbor API",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Apache_Apereo_CAS_Identify",
-                    "vul_name": "发现 Apache Apereo Cas",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Swagger_Json_Identify",
-                    "vul_name": "发现 Swagger 文档接口",
+                    "plugin_name": "FinereportV10_Identify",
+                    "vul_name": "发现帆软 FineReport V10",
                     "enable": True,
                 },
                 {
@@ -853,113 +723,13 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Grafana_Identify",
-                    "vul_name": "发现 Grafana",
-                    "enable": True,
-                },
-                {
                     "plugin_name": "Finereport_Identify",
                     "vul_name": "发现帆软 FineReport",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Apache_Ofbiz_Identify",
-                    "vul_name": "发现 Apache Ofbiz",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Django_Debug_Info",
-                    "vul_name": "Django 开启调试模式",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Gitlab_Username_Leak",
-                    "vul_name": "Gitlab 用户名泄漏",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Ueditor_SSRF",
-                    "vul_name": "Ueditor SSRF 漏洞",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "WEB_INF_WEB_xml_leak",
-                    "vul_name": "WEB-INF/web.xml 文件泄漏",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Ueditor_Store_XSS",
-                    "vul_name": "Ueditor 存储 XSS 漏洞",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Onlyoffice_noauth",
-                    "vul_name": "Onlyoffice 未授权漏洞",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Solr_noauth",
-                    "vul_name": "Apache solr 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Actuator_noauth_bypass_waf",
-                    "vul_name": "Actuator API 未授权访问 (绕过WAF)",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Redis_noauth",
-                    "vul_name": "Redis 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Actuator_noauth",
-                    "vul_name": "Actuator API 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Memcached_noauth",
-                    "vul_name": "Memcached 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Actuator_httptrace_noauth",
-                    "vul_name": "Actuator httptrace API 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Elasticsearch_noauth",
-                    "vul_name": "Elasticsearch 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Headless_remote_API_noauth",
-                    "vul_name": "Headless Remote API 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "ZooKeeper_noauth",
-                    "vul_name": "ZooKeeper 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Druid_noauth",
-                    "vul_name": "Druid 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Mongodb_noauth",
-                    "vul_name": "Mongodb 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Apollo_Adminservice_noauth",
-                    "vul_name": "apollo-adminservice 未授权访问",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "DockerRemoteAPI_noauth",
-                    "vul_name": "Docker Remote API 未授权访问",
+                    "plugin_name": "Apache_Apereo_CAS_Identify",
+                    "vul_name": "发现 Apache Apereo Cas",
                     "enable": True,
                 },
                 {
@@ -973,130 +743,85 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
+                    "plugin_name": "Druid_noauth",
+                    "vul_name": "Druid 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Mongodb_noauth",
+                    "vul_name": "Mongodb 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Redis_noauth",
+                    "vul_name": "Redis 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Solr_noauth",
+                    "vul_name": "Apache solr 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Headless_remote_API_noauth",
+                    "vul_name": "Headless Remote API 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "DockerRemoteAPI_noauth",
+                    "vul_name": "Docker Remote API 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Actuator_noauth",
+                    "vul_name": "Actuator API 未授权访问",
+                    "enable": True,
+                },
+                {
+                    "plugin_name": "Actuator_httptrace_noauth",
+                    "vul_name": "Actuator httptrace API 未授权访问",
+                    "enable": True,
+                },
+                {
                     "plugin_name": "Kibana_noauth",
                     "vul_name": "Kibana 未授权访问",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "FinereportV10_Identify",
-                    "vul_name": "发现帆软 FineReport V10",
+                    "plugin_name": "Actuator_noauth_bypass_waf",
+                    "vul_name": "Actuator API 未授权访问 (绕过WAF)",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Nacos_Identify",
-                    "vul_name": "发现 Nacos",
+                    "plugin_name": "Onlyoffice_noauth",
+                    "vul_name": "Onlyoffice 未授权漏洞",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Oracle_Weblogic_Console_Identify",
-                    "vul_name": "发现 Oracle Weblogic 控制台",
+                    "plugin_name": "Memcached_noauth",
+                    "vul_name": "Memcached 未授权访问",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Clickhouse_REST_API_Identify",
-                    "vul_name": "发现 Clickhouse REST API",
+                    "plugin_name": "Apollo_Adminservice_noauth",
+                    "vul_name": "apollo-adminservice 未授权访问",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Graphql_Identify",
-                    "vul_name": "发现 Graphql 接口",
+                    "plugin_name": "Elasticsearch_noauth",
+                    "vul_name": "Elasticsearch 未授权访问",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Weaver_Ecology_Identify",
-                    "vul_name": "发现泛微 Ecology",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "XXL_Job_Admin_Identify",
-                    "vul_name": "发现 xxl-job-admin",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "vcenter_identify",
-                    "vul_name": "发现VMware vCenter",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Any800_Identify",
-                    "vul_name": "发现 Any800全渠道智能客服云平台",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Hystrix_Dashboard_Identify",
-                    "vul_name": "发现 Hystrix Dashboard",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Adminer_PHP_Identify",
-                    "vul_name": "发现 Adminer.php",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Harbor_Identify",
-                    "vul_name": "发现 Harbor API",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Apache_Apereo_CAS_Identify",
-                    "vul_name": "发现 Apache Apereo Cas",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Swagger_Json_Identify",
-                    "vul_name": "发现 Swagger 文档接口",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Shiro_Identify",
-                    "vul_name": "发现 Apache Shiro",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Grafana_Identify",
-                    "vul_name": "发现 Grafana",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Finereport_Identify",
-                    "vul_name": "发现帆软 FineReport",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Apache_Ofbiz_Identify",
-                    "vul_name": "发现 Apache Ofbiz",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Django_Debug_Info",
-                    "vul_name": "Django 开启调试模式",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Gitlab_Username_Leak",
-                    "vul_name": "Gitlab 用户名泄漏",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Ueditor_SSRF",
-                    "vul_name": "Ueditor SSRF 漏洞",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "WEB_INF_WEB_xml_leak",
-                    "vul_name": "WEB-INF/web.xml 文件泄漏",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Ueditor_Store_XSS",
-                    "vul_name": "Ueditor 存储 XSS 漏洞",
+                    "plugin_name": "ZooKeeper_noauth",
+                    "vul_name": "ZooKeeper 未授权访问",
                     "enable": True,
                 },
             ],
             "brute_config": [
                 {
-                    "plugin_name": "MongoDBBrute",
-                    "vul_name": "MongoDB 弱口令",
+                    "plugin_name": "GitlabBrute",
+                    "vul_name": "Gitlab 弱口令",
                     "enable": True,
                 },
                 {
@@ -1105,77 +830,19 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
-                    "plugin_name": "ExchangeBrute",
-                    "vul_name": "Exchange 邮件服务器弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "ActiveMQBrute",
-                    "vul_name": "ActiveMQ 弱口令",
-                    "enable": True,
-                },
-                {"plugin_name": "IMAPBrute", "vul_name": "IMAP 弱口令", "enable": True},
-                {"plugin_name": "RDPBrute", "vul_name": "RDP 弱口令", "enable": True},
-                {
-                    "plugin_name": "GitlabBrute",
-                    "vul_name": "Gitlab 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "GrafanaBrute",
-                    "vul_name": "Grafana 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "NexusBrute",
-                    "vul_name": "Nexus Repository 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "RedisBrute",
-                    "vul_name": "Redis 弱口令",
-                    "enable": True,
-                },
-                {"plugin_name": "SSHBrute", "vul_name": "SSH 弱口令", "enable": True},
-                {
-                    "plugin_name": "HarborBrute",
-                    "vul_name": "Harbor 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Shiro_GCM_Brute",
-                    "vul_name": "Shiro GCM 弱密钥",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "ClickhouseBrute",
-                    "vul_name": "Clickhouse 弱口令",
-                    "enable": True,
-                },
-                {
                     "plugin_name": "TomcatBrute",
                     "vul_name": "Tomcat 弱口令",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "SQLServerBrute",
-                    "vul_name": "SQLServer 弱口令",
+                    "plugin_name": "MysqlBrute",
+                    "vul_name": "MySQL 弱口令",
                     "enable": True,
                 },
-                {"plugin_name": "POP3Brute", "vul_name": "POP3 弱口令", "enable": True},
+                {"plugin_name": "RDPBrute", "vul_name": "RDP 弱口令", "enable": True},
                 {
-                    "plugin_name": "AlibabaDruidBrute",
-                    "vul_name": "Alibaba Druid 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "PostgreSQLBrute",
-                    "vul_name": "PostgreSQL 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "APISIXBrute",
-                    "vul_name": "APISIX 弱口令",
+                    "plugin_name": "NacosBrute",
+                    "vul_name": "Nacos 弱口令",
                     "enable": True,
                 },
                 {"plugin_name": "FTPBrute", "vul_name": "FTP 弱口令", "enable": True},
@@ -1190,56 +857,20 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
-                    "plugin_name": "NacosBrute",
-                    "vul_name": "Nacos 弱口令",
-                    "enable": True,
-                },
-                {
                     "plugin_name": "CobaltStrikeBrute",
                     "vul_name": "CobaltStrike 弱口令",
                     "enable": True,
                 },
                 {"plugin_name": "SMTPBrute", "vul_name": "SMTP 弱口令", "enable": True},
                 {
-                    "plugin_name": "MysqlBrute",
-                    "vul_name": "MySQL 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "MongoDBBrute",
-                    "vul_name": "MongoDB 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "OpenfireBrute",
-                    "vul_name": "Openfire 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "ExchangeBrute",
-                    "vul_name": "Exchange 邮件服务器弱口令",
-                    "enable": True,
-                },
-                {
                     "plugin_name": "ActiveMQBrute",
                     "vul_name": "ActiveMQ 弱口令",
                     "enable": True,
                 },
-                {"plugin_name": "IMAPBrute", "vul_name": "IMAP 弱口令", "enable": True},
-                {"plugin_name": "RDPBrute", "vul_name": "RDP 弱口令", "enable": True},
+                {"plugin_name": "SSHBrute", "vul_name": "SSH 弱口令", "enable": True},
                 {
-                    "plugin_name": "GitlabBrute",
-                    "vul_name": "Gitlab 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "GrafanaBrute",
-                    "vul_name": "Grafana 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "NexusBrute",
-                    "vul_name": "Nexus Repository 弱口令",
+                    "plugin_name": "PostgreSQLBrute",
+                    "vul_name": "PostgreSQL 弱口令",
                     "enable": True,
                 },
                 {
@@ -1247,7 +878,6 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "vul_name": "Redis 弱口令",
                     "enable": True,
                 },
-                {"plugin_name": "SSHBrute", "vul_name": "SSH 弱口令", "enable": True},
                 {
                     "plugin_name": "HarborBrute",
                     "vul_name": "Harbor 弱口令",
@@ -1258,72 +888,16 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "vul_name": "Shiro GCM 弱密钥",
                     "enable": True,
                 },
+                {"plugin_name": "POP3Brute", "vul_name": "POP3 弱口令", "enable": True},
+                {"plugin_name": "IMAPBrute", "vul_name": "IMAP 弱口令", "enable": True},
+                {
+                    "plugin_name": "GrafanaBrute",
+                    "vul_name": "Grafana 弱口令",
+                    "enable": True,
+                },
                 {
                     "plugin_name": "ClickhouseBrute",
                     "vul_name": "Clickhouse 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "TomcatBrute",
-                    "vul_name": "Tomcat 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "SQLServerBrute",
-                    "vul_name": "SQLServer 弱口令",
-                    "enable": True,
-                },
-                {"plugin_name": "POP3Brute", "vul_name": "POP3 弱口令", "enable": True},
-                {
-                    "plugin_name": "AlibabaDruidBrute",
-                    "vul_name": "Alibaba Druid 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "PostgreSQLBrute",
-                    "vul_name": "PostgreSQL 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "APISIXBrute",
-                    "vul_name": "APISIX 弱口令",
-                    "enable": True,
-                },
-                {"plugin_name": "FTPBrute", "vul_name": "FTP 弱口令", "enable": True},
-                {
-                    "plugin_name": "JenkinsBrute",
-                    "vul_name": "Jenkins 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Shiro_CBC_Brute",
-                    "vul_name": "Shiro CBC 弱密钥",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "NacosBrute",
-                    "vul_name": "Nacos 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "CobaltStrikeBrute",
-                    "vul_name": "CobaltStrike 弱口令",
-                    "enable": True,
-                },
-                {"plugin_name": "SMTPBrute", "vul_name": "SMTP 弱口令", "enable": True},
-                {
-                    "plugin_name": "MysqlBrute",
-                    "vul_name": "MySQL 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "MongoDBBrute",
-                    "vul_name": "MongoDB 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "OpenfireBrute",
-                    "vul_name": "Openfire 弱口令",
                     "enable": True,
                 },
                 {
@@ -1332,51 +906,18 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "enable": True,
                 },
                 {
-                    "plugin_name": "ActiveMQBrute",
-                    "vul_name": "ActiveMQ 弱口令",
-                    "enable": True,
-                },
-                {"plugin_name": "IMAPBrute", "vul_name": "IMAP 弱口令", "enable": True},
-                {"plugin_name": "RDPBrute", "vul_name": "RDP 弱口令", "enable": True},
-                {
-                    "plugin_name": "GitlabBrute",
-                    "vul_name": "Gitlab 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "GrafanaBrute",
-                    "vul_name": "Grafana 弱口令",
-                    "enable": True,
-                },
-                {
                     "plugin_name": "NexusBrute",
                     "vul_name": "Nexus Repository 弱口令",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "RedisBrute",
-                    "vul_name": "Redis 弱口令",
-                    "enable": True,
-                },
-                {"plugin_name": "SSHBrute", "vul_name": "SSH 弱口令", "enable": True},
-                {
-                    "plugin_name": "HarborBrute",
-                    "vul_name": "Harbor 弱口令",
+                    "plugin_name": "MongoDBBrute",
+                    "vul_name": "MongoDB 弱口令",
                     "enable": True,
                 },
                 {
-                    "plugin_name": "Shiro_GCM_Brute",
-                    "vul_name": "Shiro GCM 弱密钥",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "ClickhouseBrute",
-                    "vul_name": "Clickhouse 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "TomcatBrute",
-                    "vul_name": "Tomcat 弱口令",
+                    "plugin_name": "AlibabaDruidBrute",
+                    "vul_name": "Alibaba Druid 弱口令",
                     "enable": True,
                 },
                 {
@@ -1384,47 +925,9 @@ def add_policy(arl_url, token, policy_name, scope_id):
                     "vul_name": "SQLServer 弱口令",
                     "enable": True,
                 },
-                {"plugin_name": "POP3Brute", "vul_name": "POP3 弱口令", "enable": True},
-                {
-                    "plugin_name": "AlibabaDruidBrute",
-                    "vul_name": "Alibaba Druid 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "PostgreSQLBrute",
-                    "vul_name": "PostgreSQL 弱口令",
-                    "enable": True,
-                },
                 {
                     "plugin_name": "APISIXBrute",
                     "vul_name": "APISIX 弱口令",
-                    "enable": True,
-                },
-                {"plugin_name": "FTPBrute", "vul_name": "FTP 弱口令", "enable": True},
-                {
-                    "plugin_name": "JenkinsBrute",
-                    "vul_name": "Jenkins 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "Shiro_CBC_Brute",
-                    "vul_name": "Shiro CBC 弱密钥",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "NacosBrute",
-                    "vul_name": "Nacos 弱口令",
-                    "enable": True,
-                },
-                {
-                    "plugin_name": "CobaltStrikeBrute",
-                    "vul_name": "CobaltStrike 弱口令",
-                    "enable": True,
-                },
-                {"plugin_name": "SMTPBrute", "vul_name": "SMTP 弱口令", "enable": True},
-                {
-                    "plugin_name": "MysqlBrute",
-                    "vul_name": "MySQL 弱口令",
                     "enable": True,
                 },
             ],
@@ -1527,7 +1030,7 @@ def configure_scanning_policies(arl_url, token, arl_scope_ids, arl_all_scopes):
             try:
                 policy_id = add_policy(arl_url, token, asset_group_name, scope_id)
                 if policy_id:
-                    log_message("新的分组策略已添加：{policy_id}")
+                    log_message(f"新的分组策略已添加：{policy_id}")
             except Exception as e:
                 log_message(f"{asset_group_name} 分组添加策略失败: {e}")
         else:
