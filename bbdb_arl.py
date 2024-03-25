@@ -1358,9 +1358,163 @@ def sync_domain_assets(
                             # 假设 add_scheduler 是一个已定义的函数，用于添加监控任务
                             add_scheduler(token, arl_url, scope_id, domain, policy_id)
         else:
-            log_message("没有需要插入到 arl 的新域名")
+            log_message("5-没有需要插入到 arl 的新域名")
     else:
-        log_message("下载 arl 域名数据失败或者为空")
+        log_message("5-下载 arl 域名数据失败或者为空")
+
+
+# 从ARL获取域名数据
+def get_arl_domainpages_data_for_ip(arl_url, token):
+    headers = {"Token": token, "Content-Type": "application/json; charset=UTF-8"}
+    size = 100
+    all_domain_data = []
+    page = 1
+    total_pages = None  # 初始化总页数为 None
+
+    while total_pages is None or page <= total_pages:
+        try:
+            response = requests.get(
+                arl_url
+                + f"/api/domain/?page={page}&size={size}&tabIndex=1&ts=1711335367525",
+                headers=headers,
+                verify=False,
+            )
+            response.raise_for_status()
+            response_data = response.json()
+        except requests.RequestException as e:
+            log_message(f"Request failed: {e}")
+            break
+        except ValueError:
+            log_message("Failed to decode JSON response")
+            break
+
+        if total_pages is None:
+            total = response_data.get("total", 0)
+            total_pages = (total + size - 1) // size  # 计算总页数
+
+        if "items" in response_data:
+            all_domain_data.extend(response_data["items"])
+        else:
+            log_message("响应中没有 'items' 键")
+            break
+
+        page += 1  # 请求下一页
+
+    return all_domain_data
+
+
+def arl_ip_to_bbdb(
+    db, arl_url, token, businesses, root_domains, sub_domains, blacklists, ips
+):
+    global new_ips_to_bbdb
+
+    # 将root_domains和sub_domains列表转换为字典
+    root_domains = {root_domain["name"]: root_domain for root_domain in root_domains}
+    sub_domains = {sub_domain["name"]: sub_domain for sub_domain in sub_domains}
+
+    # 构建黑名单IP集合
+    blacklist_ips = {ip["name"].lower() for ip in blacklists if ip["type"] == "ip"}
+
+    # 构建已存在IP的集合
+    existing_ips = {ip["address"].lower() for ip in ips}
+
+    # 准备插入的IP数据列表
+    new_ips_to_bbdb = []
+
+    # 获取ARL的域名数据
+    arl_domainpages_data_for_ip = get_arl_domainpages_data_for_ip(arl_url, token)
+
+    # 定义IPv4地址的正则表达式
+    ipv4_pattern = r"^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$"
+    # 从数据中去除黑名单IP
+    for item in arl_domainpages_data_for_ip:
+        if item.get("type") == "A" and item.get("ips"):
+            newips = []
+            for ip_address in item["ips"]:
+                if (
+                    bool(re.match(ipv4_pattern, ip_address.lower()))
+                    and ip_address.lower() not in blacklist_ips
+                ):
+                    newips.append(ip_address.lower())
+            if newips:
+                item["ips"] = newips
+            else:
+                arl_domainpages_data_for_ip.remove(item)
+
+    # 把当前ips的内容组合起来，用来判断新插入的内容是否已存在
+    existing_ips_identifiers = set(
+        f"{ip['address']}_{ip['root_domain_id']}"
+        + (f"_{ip['sub_domain_id']}" if ip.get("sub_domain_id") else "")
+        + f"_{ip['business_id']}"
+        for ip in ips
+    )
+    # 查找对应域名并构造bbdb插入文档
+    for item in arl_domainpages_data_for_ip:
+        # 先在sub_domain表中查询对应的域名
+        sub_domain_id = ""
+
+        item_domain = item.get("domain")
+        sub_domain_obj = sub_domains.get(item_domain)
+        if sub_domain_obj:
+            # 当前item域名在sub_domain表中
+            sub_domain_id = str(sub_domain_obj["_id"])
+            root_domain_id = str(sub_domain_obj["root_domain_id"])
+            business_id = str(sub_domain_obj["business_id"])
+        else:
+            root_domain_obj = root_domain_obj.get(item_domain)
+            if root_domain_obj:
+                root_domain_id = str(root_domain_obj["_id"])
+                business_id = str(root_domain_obj["business_id"])
+            else:
+                log_message(f"无法找到与 IP 地址 {ip_address} 对应的域名")
+                continue
+
+        for ip_address in item["ips"]:
+            # 检查组成的文档是否已存在
+            current_ip_identifier = (
+                f"{ip_address}_{root_domain_id}"
+                + (f"_{sub_domain_id}" if sub_domain_id != "" else "")
+                + f"_{business_id}"
+            )
+
+            if current_ip_identifier not in existing_ips_identifiers:
+
+                # 构造IP文档
+                ip_document = {
+                    "name": "",
+                    "address": ip_address,
+                    "port": "",
+                    "service_name": "",
+                    "service_type": "",
+                    "service_desc": "",
+                    "province_cn": "",
+                    "city_cn": "",
+                    "country_cn": "",
+                    "districts_and_counties_en": "",
+                    "districts_and_counties_cn": "",
+                    "province_en": "",
+                    "city_en": "",
+                    "country_en": "",
+                    "operators": "",
+                    "is_real": True,
+                    "is_cdn": False,
+                    "cname": "",
+                    "root_domain_id": root_domain_id,
+                    "sub_domain_id": sub_domain_id,
+                    "business_id": business_id,
+                    "notes": "set by soapffz with arl",
+                    "create_time": datetime.now(),
+                    "update_time": datetime.now(),
+                }
+
+                new_ips_to_bbdb.append(ip_document)
+
+    # 批量插入IP到bbdb的ip表
+    if new_ips_to_bbdb:
+        db.ip.insert_many(new_ips_to_bbdb)
+        log_message(f"7-成功插入{len(new_ips_to_bbdb)}个新IP到bbdb")
+    else:
+        log_message(f"7-没有需要插入bbdb的新ip")
 
 
 def arl_site_to_bbdb(
@@ -1559,7 +1713,12 @@ def main():
     )
     arl_all_scopes = get_arl_scopes_pages(token, arl_url)
 
-    # 7. IP资产同步。已取消，原始arl版本在请求资产页面能直接得到部分ip，现在资产页面只有初始设置时的域名字段，且不会更新，导致了上一步双向同步域名都改变为下载全部并匹配的方式，ip不能通过此方式实现
+    # 7. IP资产同步。原始arl版本在请求资产页面能直接得到部分ip，现在资产页面只有初始设置时的域名字段，且不会更新，只能访问资产总览页面，翻页实现读取所有内容并解析，会导致大量网络请求。
+    log_message("7-准备ip导入bbdb任务，注意会造成大量对arl的请求，酌情使用")
+    arl_ip_to_bbdb(
+        db, arl_url, token, businesses, root_domains, sub_domains, blacklists, ips
+    )
+    log_message("7-ip导入bbdb任务处理完毕")
 
     # 8. 站点site资产同步，下载全部数据后解析找到对应资产分组
     log_message("8-准备url导入bbdb任务")
@@ -1599,7 +1758,7 @@ def main():
     log_message(f"bbdb 添加的新分组数量： {len(arl_only_asset_scopes)}")
     log_message(f"arl 添加的新域名数量：{len(new_domains_to_arl)}")
     log_message(f"bbdb 添加的新域名数量：{len(new_domains_to_bbdb)}")
-    # log_message(f"bbdb 添加的新 ip 数量：{len(new_ips_to_bbdb)}")
+    log_message(f"bbdb 添加的新 ip 数量：{len(new_ips_to_bbdb)}")
     log_message(f"bbdb 添加的新 url 数量：{len(new_sites_to_bbdb)}")
 
 
