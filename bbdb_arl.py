@@ -1478,7 +1478,6 @@ def arl_ip_to_bbdb(
             )
 
             if current_ip_identifier not in existing_ips_identifiers:
-
                 # 构造IP文档
                 ip_document = {
                     "name": "",
@@ -1500,12 +1499,13 @@ def arl_ip_to_bbdb(
                     "is_cdn": False,
                     "cname": "",
                     "root_domain_id": root_domain_id,
-                    "sub_domain_id": sub_domain_id,
                     "business_id": business_id,
                     "notes": "set by soapffz with arl",
                     "create_time": datetime.now(),
                     "update_time": datetime.now(),
                 }
+                if sub_domain_id:
+                    ip_document["sub_domain_id"] = sub_domain_id
 
                 new_ips_to_bbdb.append(ip_document)
 
