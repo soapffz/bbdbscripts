@@ -21,6 +21,7 @@ import re
 from datetime import datetime, timezone, timedelta
 import os
 from bson.objectid import ObjectId
+from typing import List, Dict
 
 urllib3.disable_warnings()
 
@@ -93,11 +94,20 @@ def login_arl():
     return token
 
 
-def get_bbdb_data(db, name_keyword):
+def get_bbdb_data(db, name_keyword: str) -> tuple:
     # 从数据库中获取所有的数据
     # 获取 business 数据
     businesses = list(db.business.find({"name": {"$regex": name_keyword}}))
-    business_ids = [str(business["_id"]) for business in businesses]
+
+    # 过滤掉没有关联 root_domain 的 business
+    business_with_domains = []
+    for business in businesses:
+        business_id = str(business["_id"])
+        root_domains = list(db.root_domain.find({"business_id": business_id}))
+        if root_domains:
+            business_with_domains.append(business)
+
+    business_ids = [str(business["_id"]) for business in business_with_domains]
 
     # 一次性获取所有需要的表的数据，基于 business_id 进行筛选
     root_domains = list(db.root_domain.find({"business_id": {"$in": business_ids}}))
@@ -106,7 +116,7 @@ def get_bbdb_data(db, name_keyword):
     ips = list(db.ip.find({"business_id": {"$in": business_ids}}))
     blacklists = list(db.blacklist.find({"business_id": {"$in": business_ids}}))
 
-    return businesses, root_domains, sub_domains, sites, ips, blacklists
+    return business_with_domains, root_domains, sub_domains, sites, ips, blacklists
 
 
 def compare_business_and_arl(businesses, arl_all_scopes):
@@ -1030,7 +1040,7 @@ def configure_scanning_policies(arl_url, token, arl_scope_ids, arl_all_scopes):
             try:
                 policy_id = add_policy(arl_url, token, asset_group_name, scope_id)
                 if policy_id:
-                    log_message(f"新的分组策略已添加：{policy_id}")
+                    log_message(f"新的分组策略已添加：{asset_group_name}")
             except Exception as e:
                 log_message(f"{asset_group_name} 分组添加策略失败: {e}")
         else:
@@ -1334,7 +1344,7 @@ def sync_domain_assets(
                         # 检查响应状态码
                         if response.status_code == 200:
                             log_message(
-                                f"成功添加 {len(domains)} 个域名到 ARL 资产分组 {business_name}"
+                                f"5-成功添加 {len(domains)} 个域名到 ARL 资产分组 {business_name}"
                             )
                         else:
                             log_message(
