@@ -1,7 +1,13 @@
-# 作者: soapffz
-# 创建时间: 2024年3月18日
-# 最后更新时间: 2024年3月18日
-# 描述: 定时每晚23点50执行一次bbdb数据库备份到七牛云，并删除超过10份的较老备份。需apk add --no-cache mongodb-tools
+"""
+new Env('bbdb备份到七牛');
+50 23 * * * https://raw.githubusercontent.com/soapffz/bbdbscripts/main/bbdb_backup_to_qiniu.py
+
+作者: soapffz
+创建时间: 2024年3月18日
+最后更新时间: 2024年3月18日
+描述: 定时每晚23点50执行一次bbdb数据库备份到七牛云，并删除超过10份的较老备份。需apk add --no-cache mongodb-tools
+"""
+
 
 import os
 import subprocess
