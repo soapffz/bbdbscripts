@@ -5,7 +5,7 @@ new Env('bbdb-ARL联动');
 文件名: bbdb_arl.py
 作者: soapffz
 创建日期: 2023年10月1日
-最后修改日期: 2024年3月25日
+最后修改日期: 2024年3月26日
 
 本脚本实现了bbdb和ARL之间的联动，详细步骤以main函数中注释为准
 
@@ -1471,7 +1471,7 @@ def arl_ip_to_bbdb(
             root_domain_id = str(sub_domain_obj["root_domain_id"])
             business_id = str(sub_domain_obj["business_id"])
         else:
-            root_domain_obj = root_domain_obj.get(item_domain)
+            root_domain_obj = root_domains.get(item_domain)
             if root_domain_obj:
                 root_domain_id = str(root_domain_obj["_id"])
                 business_id = str(root_domain_obj["business_id"])
