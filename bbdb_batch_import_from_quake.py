@@ -1,4 +1,7 @@
 """
+new Env('Quake数据导入bbdb');
+* * * * * https://raw.githubusercontent.com/soapffz/bbdbscripts/main/bbdb_batch_import_from_quake.py
+
 文件名: bbdb_batch_import_from_quake.py
 作者: soapffz
 创建日期: 2023年10月15日
