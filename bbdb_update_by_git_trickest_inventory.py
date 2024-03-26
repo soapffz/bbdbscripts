@@ -1,4 +1,7 @@
 """
+new Env('trickest_inventory');
+*/6 * * * * https://raw.githubusercontent.com/soapffz/bbdbscripts/main/bbdb_update_by_git_trickest_inventory.py
+
 文件名: bbdb_update_by_git_trickest_inventory.py
 作者: soapffz
 创建日期: 2024年3月19日
