@@ -1,4 +1,7 @@
 """
+new Env('bbdb清洗');
+*/10 * * * * https://raw.githubusercontent.com/soapffz/bbdbscripts/main/bbdb_clean.py
+
 文件名: bbdb_clean.py
 作者: soapffz
 创建日期: 2023年10月1日
