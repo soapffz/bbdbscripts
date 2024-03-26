@@ -1,3 +1,8 @@
+"""
+new Env('测试-导出根域名');
+50 23 * * * https://raw.githubusercontent.com/soapffz/bbdbscripts/main/debug_bbdb_download_allrootdomains.py
+"""
+
 import os
 from pymongo import MongoClient
 from datetime import datetime, timezone, timedelta
