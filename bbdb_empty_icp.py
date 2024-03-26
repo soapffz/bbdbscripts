@@ -1,4 +1,7 @@
 """
+new Env('空ICP备案搜索');
+15 3 * * * https://raw.githubusercontent.com/soapffz/bbdbscripts/main/bbdb_empty_icp.py
+
 文件名: bbdb_empty_icp.py
 作者: soapffz
 创建日期: 2024年3月20日
