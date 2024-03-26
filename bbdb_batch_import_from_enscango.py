@@ -1,4 +1,7 @@
 """
+new Env('ENScan_GO导入bbdb');
+* * * * * https://raw.githubusercontent.com/soapffz/bbdbscripts/main/bbdb_batch_import_from_enscango.py
+
 作者：soapffz
 创建时间：2023年10月1日
 最后修改时间：2024年3月21日
