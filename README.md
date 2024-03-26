@@ -316,7 +316,7 @@ print("Database 'bbdb' deleted.")
 
 ## 相关脚本运行截图展示
 
-![bbdb_arl.py](https://img.soapffz.com/soapsgithubimgs/bbdb_arl演示截图-2023年10月12日.png)
+![](https://img.soapffz.com/archives_img/2024/03/26/bbdb_arl联动新截图-103243.png)
 
 ## 参考的项目列表
 
