@@ -1,7 +1,12 @@
-# 作者: soapffz
-# 创建时间: 2024年2月21日
-# 最后更新时间: 2024年3月20日
-# 描述: 自动登录雷神众测平台，获取并更新token，统计进行中项目信息，自动加入项目并推送bark
+"""
+new Env('bbdb-ARL联动');
+*/15 * 8-23 * * * https://raw.githubusercontent.com/soapffz/bbdbscripts/main/bbdb_auto_thor_addproject.py
+
+作者: soapffz
+创建时间: 2024年2月21日
+最后更新时间: 2024年3月20日
+描述: 自动登录雷神众测平台，获取并更新token，统计进行中项目信息，自动加入项目并推送bark
+"""
 
 import os
 import poplib
