@@ -14,7 +14,7 @@ _个人自用_
 
 ## 此仓库脚本使用方式
 
-本脚本使用 n8n 和部分 python 脚本配合使用，n8n 稳定内容暂未放出
+使用青龙平台拉取并自动添加定时时间，部分脚本定时规则调试中还未完全固定
 
 ## 数据库启动及初始化
 
@@ -34,7 +34,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 ## 备份方式
 
-使用 n8n 配合云服务的对象存储，存储指定数量的备份
+使用 七牛云 的对象存储，存储指定数量的备份
 
 ## 维护数据库的原则
 
@@ -73,9 +73,6 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 - id：子域名 ID，MongoDB 自动生成
 - name：子域名名称
-- icpregnum：icp 备案号名称
-- company: 主办单位名称
-- company_type: 单位性质
 - root_domain_id：关联的根域名 ID
 - business_id：关联的业务 ID
 - notes：备注，用于自定义描述
@@ -211,7 +208,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 13. 黑名单表(blacklist)
 
 - id：黑名单 ID，MongoDB 自动生成
-- type：黑名单类型，子域名为sub_domain，站点为url，公司为company
+- type：黑名单类型，子域名为 sub_domain，站点为 url，公司为 company，ip 为 ip
 - name: 黑名单内容，比如子域名名称
 - root_domain_id：关联的根域名 ID
 - business_id：关联的业务 ID
@@ -239,7 +236,7 @@ brew tap mongodb/brew && brew install mongodb-community@4.4 && brew services sta
 
 </details>
 
-## mongodump 和 mongorestore 备份和还原（比较过时）
+## mongodump 和 mongorestore 备份和还原
 
 - mongodump 和 mongorestore 命令在 MongoDB 4.4 版本中已被弃用，建议使用 mongocli 进行备份和恢复操作 \*
 
@@ -281,7 +278,10 @@ print("Database 'bbdb' deleted.")
 
 ```
 
-## MongoDB CLI 备份和还原(支持的环境下可以尝试，我的不支持)
+## MongoDB CLI 备份和还原(5.0 之后的版本)
+
+<details>
+<summary>mongocli备份还原方法</summary>
 
 首先，你需要安装并配置 MongoDB CLI。你可以在 MongoDB 的官方文档中找到安装和配置的详细步骤。
 
@@ -312,6 +312,8 @@ print("Database 'bbdb' deleted.")
 
 注意：这些命令需要在你的系统 PATH 中。如果你使用的是 MongoDB 的官方安装包，那么这些命令应该已经在 PATH 中了。如果不在，你需要手动添加它们。
 
+</details>
+
 ## 相关脚本运行截图展示
 
 ![bbdb_arl.py](https://img.soapffz.com/soapsgithubimgs/bbdb_arl演示截图-2023年10月12日.png)
@@ -322,9 +324,20 @@ print("Database 'bbdb' deleted.")
 
 ## 更新日志
 
+2024 年 3 月 26 日
+
+- \[ add \]: 添加了 bbdb_empty_icp.py，将备案信息为空的根域名尝试查询并添加
+- \[ add \]: 添加了 bbdb_git_pull_with_proxy.sh，用以更新 trickest_inventory
+- \[ update \]: 更新了 bbdb_batch_import_from_enscango.py，修复了一部分 enscan_go 导出结果解析
+- \[ update \]: 更新了 bbdb_arl.py，由于 ARL 页面的变化，导致重写了域名、IP 和站点的获取方法
+- \[ update \]: 更新了 bbdb_clean.py，name 为空的字段不再去重，防止误删
+- \[ update \]: 更新了 bbdb_auto_thor_addproject.py，去除了使用云码平台调用识别验证码功能，改为本地 docker 启动 ocr_api_server
+- \[ update \]: 更新了 bbdb 数据库部分设计，为 blacklist 添加 type 区分
+- \[ delete \]: 删除了 bbdb 数据库部分设计，删除了 sub_domain 表中备案相关字段
+
 2024 年 3 月 19 日
 
-- \[ add \]: 添加在青龙平台上使用trickest_inventory更新数据库的脚本 bbdb_update_by_git_trickest_inventory.py
+- \[ add \]: 添加在青龙平台上使用 trickest_inventory 更新数据库的脚本 bbdb_update_by_git_trickest_inventory.py
 
 2024 年 3 月 18 日
 
