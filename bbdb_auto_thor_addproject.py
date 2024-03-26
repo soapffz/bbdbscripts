@@ -1,5 +1,5 @@
 """
-new Env('bbdb-ARL联动');
+new Env('雷神众测全自动');
 */15 * 8-23 * * * https://raw.githubusercontent.com/soapffz/bbdbscripts/main/bbdb_auto_thor_addproject.py
 
 作者: soapffz
