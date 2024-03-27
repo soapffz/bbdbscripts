@@ -74,11 +74,20 @@ def parse_and_process(lines, business_name=""):
             )
             return
 
+    sub_domains = list(db.sub_domain.find(business_id_filter))
+    sub_domains_dict = {
+        str(sub_domain["_id"]): sub_domain for sub_domain in sub_domains
+    }
+
     root_domains = list(db.root_domain.find(business_id_filter))
+    root_domains_dict = {
+        str(root_domain["_id"]): root_domain for root_domain in root_domains
+    }
     root_domains_set = {doc["name"] for doc in root_domains}
+    ips = list(db.ip.find(business_id_filter))
+    ips_dict = {ip["address"]: ip for ip in ips}
     sub_domains_to_insert = []
     sites_to_insert = []
-    ips_to_insert = []
 
     blacklist_sub_domains = set(
         doc["name"]
@@ -101,6 +110,7 @@ def parse_and_process(lines, business_name=""):
 
     lines = preprocess_lines(lines)
     log_message("文本文件读取完成")
+    # log_message(lines)
 
     # 解析根域名
     for line in lines:
@@ -137,8 +147,12 @@ def parse_and_process(lines, business_name=""):
                     }
                     sub_domains_to_insert.append(sub_domain_data)
 
-    # 加载子域名数据
-    sub_domains = list(db.sub_domain.find())
+    # 加载子域名数据，将根域名和子域名合并在一起来判断URL的归属
+    sub_domains = list(db.sub_domain.find(business_id_filter))
+    domain_names = {sub_domain["name"]: sub_domain for sub_domain in sub_domains}
+    domain_names.update(
+        {root_domain["name"]: root_domain for root_domain in root_domains}
+    )
 
     # 解析站点信息
     for line in lines:
@@ -150,7 +164,7 @@ def parse_and_process(lines, business_name=""):
                 if re.match(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", hostname):
                     ip_address = hostname
                     if ip_address not in blacklist_ips:
-                        ip_docs = list(db.ip.find({"address": ip_address}))
+                        ip_docs = ips_dict.get(ip_address)
                         if ip_docs:
                             sub_domain_id = None
                             root_domain_id = None
@@ -176,11 +190,13 @@ def parse_and_process(lines, business_name=""):
                                     if root_domain_id:
                                         break
                             hostname = (
-                                db.sub_domain.find_one({"_id": sub_domain_id})["name"]
-                                if sub_domain_id
-                                else db.root_domain.find_one({"_id": root_domain_id})[
-                                    "name"
-                                ]
+                                sub_domains_dict[sub_domain_id]["name"]
+                                if sub_domain_id in sub_domains_dict
+                                else (
+                                    root_domains_dict[root_domain_id]["name"]
+                                    if root_domain_id in root_domains_dict
+                                    else ""
+                                )
                             )
                             if (
                                 processed_url not in blacklist_urls
@@ -217,44 +233,58 @@ def parse_and_process(lines, business_name=""):
 
                 # 处理域名形式的 URL
                 else:
-                    for sub_domain in sub_domains:
-                        if hostname.endswith(sub_domain["name"]):
-                            sub_domain_id = str(sub_domain["_id"])
-                            root_domain_id = sub_domain["root_domain_id"]
-                            business_id = sub_domain["business_id"]
-                            if (
-                                processed_url not in blacklist_urls
-                                and processed_url not in existing_sites
-                            ):
-                                site_data = {
-                                    "name": processed_url,
-                                    "status": "",
-                                    "title": "",
-                                    "hostname": hostname,
-                                    "ip": "",
-                                    "http_server": "",
-                                    "body_length": "",
-                                    "headers": "",
-                                    "keywords": "",
-                                    "applications": [],
-                                    "applications_categories": [],
-                                    "applications_types": [],
-                                    "applications_levels": [],
-                                    "application_manufacturer": [],
-                                    "fingerprint": [],
-                                    "root_domain_id": root_domain_id,
-                                    "sub_domain_id": sub_domain_id,
-                                    "business_id": business_id,
-                                    "notes": "set by soapffz with script",
-                                    "create_time": datetime.now(
-                                        timezone(timedelta(hours=8))
-                                    ),
-                                    "update_time": datetime.now(
-                                        timezone(timedelta(hours=8))
-                                    ),
-                                }
-                                sites_to_insert.append(site_data)
-                                break
+                    domain_info = None
+                    for domain_name, domain_doc in domain_names.items():
+                        if hostname.endswith(domain_name):
+                            domain_info = domain_doc
+                            break
+
+                    if domain_info:
+                        root_domain_id = (
+                            str(domain_info["_id"])
+                            if "root_domain_id" not in domain_info
+                            else domain_info["root_domain_id"]
+                        )
+                        sub_domain_id = (
+                            None
+                            if "root_domain_id" not in domain_info
+                            else str(domain_info["_id"])
+                        )
+                        business_id = domain_info["business_id"]
+
+                        if (
+                            processed_url not in blacklist_urls
+                            and processed_url not in existing_sites
+                        ):
+                            site_data = {
+                                "name": processed_url,
+                                "status": "",
+                                "title": "",
+                                "hostname": hostname,
+                                "ip": "",
+                                "http_server": "",
+                                "body_length": "",
+                                "headers": "",
+                                "keywords": "",
+                                "applications": [],
+                                "applications_categories": [],
+                                "applications_types": [],
+                                "applications_levels": [],
+                                "application_manufacturer": [],
+                                "fingerprint": [],
+                                "root_domain_id": root_domain_id,
+                                "business_id": business_id,
+                                "notes": "set by soapffz with script",
+                                "create_time": datetime.now(
+                                    timezone(timedelta(hours=8))
+                                ),
+                                "update_time": datetime.now(
+                                    timezone(timedelta(hours=8))
+                                ),
+                            }
+                            if sub_domain_id:
+                                site_data["sub_domain_id"] = sub_domain_id
+                            sites_to_insert.append(site_data)
 
     # 批量插入数据
     if sub_domains_to_insert:
@@ -272,7 +302,7 @@ def main():
     with open("domain.txt", "r") as file:
         lines = file.readlines()
 
-    # 处理可以指定business，但是也不会添加新的根域名，只是限定了范围速度会更快
+    # 处理可以指定business，但是也不会添加新的根域名，只是限定了范围速度会更快,插入的站点一直可以属于根域名，也可以属于子域名
     # business_name="国内-xxx"
     # parse_and_process(lines,business_name)
     parse_and_process(lines)
