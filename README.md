@@ -324,6 +324,11 @@ print("Database 'bbdb' deleted.")
 
 ## 更新日志
 
+2024 年 3 月 27日
+
+- \[ add \]: 添加了调试脚本debug_bbdb_new_subdomain_site_in_txt_to_bbdb.py，根据bbdb已有根域名导入文本内容
+- \[ update \]: 将从enscan导入的文件更新为debug_bbdb_batch_import_from_enscango.py
+
 2024 年 3 月 26 日
 
 - \[ add \]: 添加了 bbdb_empty_icp.py，将备案信息为空的根域名尝试查询并添加
