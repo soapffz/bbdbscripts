@@ -326,6 +326,7 @@ print("Database 'bbdb' deleted.")
 
 2024 年 3 月 27日
 
+- \[ add \]: 添加了bbdb_update_site_to_awvs.py脚本，定时执行，根据test502git/awvs14-scan脚本输出判断AWVS扫描中数量，补齐固定数量的url去扫描
 - \[ add \]: 添加了调试脚本debug_bbdb_new_subdomain_site_in_txt_to_bbdb.py，根据bbdb已有根域名导入文本内容
 - \[ update \]: 将从enscan导入的文件更新为debug_bbdb_batch_import_from_enscango.py
 
