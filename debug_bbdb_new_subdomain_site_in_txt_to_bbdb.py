@@ -37,6 +37,8 @@ def preprocess_lines(lines):
     for line in lines:
         line = line.strip()
         if line:
+            if "." not in line:
+                continue
             # 去除以*.开头的域名
             line = re.sub(r"^\*\.", "", line)
             # 处理如果开头直接是*加上域名的情况，去除*
@@ -303,9 +305,9 @@ def main():
         lines = file.readlines()
 
     # 处理可以指定business，但是也不会添加新的根域名，只是限定了范围速度会更快,插入的站点一直可以属于根域名，也可以属于子域名
-    # business_name="国内-xxx"
-    # parse_and_process(lines,business_name)
-    parse_and_process(lines)
+    business_name = "国内-雷神众测-中信银行"
+    parse_and_process(lines, business_name)
+    # parse_and_process(lines)
     log_message("解析完成!")
 
 
