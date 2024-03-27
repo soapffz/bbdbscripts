@@ -5,7 +5,7 @@ new Env('根据bbdb已有根域名导入文本内容');
 文件名: debug_bbdb_new_subdomain_site_in_txt_to_bbdb.py
 作者: soapffz
 创建日期: 2024年3月26日
-最后修改日期: 2024年3月27日
+最后修改日期: 2024年3月28日
 
 在已有根域名的情况下，从文本文件解析尝试插入子域名和站点，支持ip格式的URL，注意一定要处理好文本文件
 
@@ -61,21 +61,42 @@ def preprocess_url(url):
         return None, "", ""
 
 
-def parse_and_process(lines):
-    root_domains = list(db.root_domain.find())
+def parse_and_process(lines, business_name=""):
+    # 如果business_name不为空，则查询对应的business_id
+    business_id_filter = {}
+    if business_name:
+        business = db.business.find_one({"name": business_name})
+        if business:
+            business_id_filter = {"business_id": str(business["_id"])}
+        else:
+            log_message(
+                f"Business name '{business_name}' not found.", is_positive=False
+            )
+            return
+
+    root_domains = list(db.root_domain.find(business_id_filter))
     root_domains_set = {doc["name"] for doc in root_domains}
     sub_domains_to_insert = []
     sites_to_insert = []
     ips_to_insert = []
 
     blacklist_sub_domains = set(
-        doc["name"] for doc in db.blacklist.find({"type": "sub_domain"})
+        doc["name"]
+        for doc in db.blacklist.find({"type": "sub_domain", **business_id_filter})
     )
-    blacklist_urls = set(doc["name"] for doc in db.blacklist.find({"type": "url"}))
-    blacklist_ips = set(doc["name"] for doc in db.blacklist.find({"type": "ip"}))
-    existing_root_domains = set(doc["name"] for doc in db.root_domain.find())
-    existing_sub_domains = set(doc["name"] for doc in db.sub_domain.find())
-    existing_sites = set(doc["name"] for doc in db.site.find())
+    blacklist_urls = set(
+        doc["name"] for doc in db.blacklist.find({"type": "url", **business_id_filter})
+    )
+    blacklist_ips = set(
+        doc["name"] for doc in db.blacklist.find({"type": "ip", **business_id_filter})
+    )
+    existing_root_domains = set(
+        doc["name"] for doc in db.root_domain.find(business_id_filter)
+    )
+    existing_sub_domains = set(
+        doc["name"] for doc in db.sub_domain.find(business_id_filter)
+    )
+    existing_sites = set(doc["name"] for doc in db.site.find(business_id_filter))
     log_message("加载数据库完成")
 
     lines = preprocess_lines(lines)
@@ -251,6 +272,9 @@ def main():
     with open("domain.txt", "r") as file:
         lines = file.readlines()
 
+    # 处理可以指定business，但是也不会添加新的根域名，只是限定了范围速度会更快
+    # business_name="国内-xxx"
+    # parse_and_process(lines,business_name)
     parse_and_process(lines)
     log_message("解析完成!")
 
