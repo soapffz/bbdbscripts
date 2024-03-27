@@ -168,29 +168,12 @@ def parse_and_process(lines, business_name=""):
                     if ip_address not in blacklist_ips:
                         ip_docs = ips_dict.get(ip_address)
                         if ip_docs:
-                            sub_domain_id = None
-                            root_domain_id = None
-                            business_id = None
-                            for ip_doc in ip_docs:
-                                for entry in ip_doc.get("sub_domains", []):
-                                    if "sub_domain_id" in entry:
-                                        sub_domain_id = str(entry["sub_domain_id"])
-                                        root_domain_id = str(entry["root_domain_id"])
-                                        business_id = str(entry["business_id"])
-                                        break
-                                if sub_domain_id:
-                                    break
-                            if not sub_domain_id:
-                                for ip_doc in ip_docs:
-                                    for entry in ip_doc.get("root_domains", []):
-                                        if "root_domain_id" in entry:
-                                            root_domain_id = str(
-                                                entry["root_domain_id"]
-                                            )
-                                            business_id = str(entry["business_id"])
-                                            break
-                                    if root_domain_id:
-                                        break
+                            if "sub_domain_id" in ip_docs:
+                                sub_domain_id = str(ip_docs["sub_domain_id"])
+                            else:
+                                sub_domain_id = None
+                            root_domain_id = str(ip_docs["root_domain_id"])
+                            business_id = str(ip_docs["business_id"])
                             hostname = (
                                 sub_domains_dict[sub_domain_id]["name"]
                                 if sub_domain_id in sub_domains_dict
@@ -305,7 +288,7 @@ def main():
         lines = file.readlines()
 
     # 处理可以指定business，但是也不会添加新的根域名，只是限定了范围速度会更快,插入的站点一直可以属于根域名，也可以属于子域名
-    business_name = "国内-雷神众测-中信银行"
+    business_name = ""
     parse_and_process(lines, business_name)
     # parse_and_process(lines)
     log_message("解析完成!")
