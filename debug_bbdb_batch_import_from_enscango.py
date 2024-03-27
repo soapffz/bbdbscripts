@@ -1,12 +1,9 @@
 """
-new Env('ENScan_GO导入bbdb');
-* * * * * https://raw.githubusercontent.com/soapffz/bbdbscripts/main/bbdb_batch_import_from_enscango.py
-
 作者：soapffz
 创建时间：2023年10月1日
-最后修改时间：2024年3月21日
+最后修改时间：2024年3月26日
 
-脚本功能：从enscango导出的xlsx批量读取到bbdb中，需要传入文件名称和business_name
+脚本功能：从enscango导出的xlsx批量读取到bbdb中，需要传入文件名称和指定输出文件夹，注意会遍历文件夹内所有文件
 """
 
 import os
@@ -214,7 +211,6 @@ def process_data(db, xlsx_file_name, business_name):
     if operations:
         db["software_copyright"].bulk_write(operations)
 
-
 if __name__ == "__main__":
     # 连接MongoDB
     mongodb_uri = "mongodb://192.168.2.188:27017/"
@@ -226,8 +222,10 @@ if __name__ == "__main__":
         exit(1)
 
     # 传入xlsx文件名称和对应的business_name
-    xlsx_file_name = "outs/泰隆银行--2024-03-21--1711032014.xlsx"
-    business_name = "国内-雷神众测-泰隆银行"
+    # xlsx_file_name = "outs/联通支付有限公司--2024-03-26--1711449289.xlsx"
+    business_name = "国内-雷神众测-江苏应急安全相关"
 
     # 处理数据并插入到数据库
-    process_data(db, xlsx_file_name, business_name)
+    for filename in os.listdir("outs"):
+        filename = "outs/"+filename
+        process_data(db, filename, business_name)
